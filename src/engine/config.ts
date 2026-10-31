@@ -34,6 +34,26 @@ export const CONFIG = {
     recoveryRestDay: 5,
   },
 
+  /** Turning Health Connect records into workouts. PROPOSAL values until confirmed. */
+  ingest: {
+    /** An auto-detected walk counts as a workout only if it lasts at least this long (after merging). */
+    walkWorkoutMinMinutes: 45,
+    /** Walk fragments separated by less than this are one walk. */
+    walkMergeGapMinutes: 10,
+    /** Two sessions overlapping by this fraction of the shorter one are the same session. */
+    overlapFraction: 0.5,
+    /** When two apps recorded the same session, the app earlier in this list wins. */
+    originPriority: [
+      'io.strongapp.strong',
+      'com.strava',
+      'com.ultrahuman.android',
+      'com.fitbit.FitbitMobile',
+      'com.google.android.apps.fitness',
+    ],
+    /** Health Connect sleep stages that do not count as sleep: awake, out of bed. */
+    sleepExcludedStages: [1, 3],
+  },
+
   /** XP needed to go from level n to n+1 = base + step * (n - 1). */
   levelCurve: { base: 600, step: 75 },
 

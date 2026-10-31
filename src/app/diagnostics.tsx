@@ -2,7 +2,10 @@ import { Stack } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { availability, connect, diagnose, openHealthConnectSettings, type HcAvailability, type TypeSummary } from '@/data/healthConnect';
+import { CONFIG, LB_PER_KG } from '@/engine';
+import { availability, connect, diagnose, openHealthConnectSettings, readHealthSnapshot, type HcAvailability, type HealthSnapshot, type TypeSummary } from '@/data/healthConnect';
+import { summarizeRecovery } from '@/data/ingest';
+import { originLabel } from '@/data/originSummary';
 
 const LABELS: Record<string, string> = {
   ExerciseSession: 'Workouts',
@@ -21,6 +24,7 @@ const LABELS: Record<string, string> = {
 export default function Diagnostics() {
   const [hc, setHc] = useState<HcAvailability | null>(null);
   const [rows, setRows] = useState<TypeSummary[] | null>(null);
+  const [snapshot, setSnapshot] = useState<HealthSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,6 +33,7 @@ export default function Diagnostics() {
     setError(null);
     try {
       setRows(await diagnose(30));
+      setSnapshot(await readHealthSnapshot(30));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -81,13 +86,16 @@ export default function Diagnostics() {
       {busy && <ActivityIndicator color="#B9A7FF" style={{ marginVertical: 16 }} />}
       {error && <Text style={styles.error}>{error}</Text>}
 
+      {snapshot && <SnapshotCard snapshot={snapshot} />}
+
       {rows?.map((r) => (
         <View key={r.recordType} style={styles.card}>
           <View style={styles.cardHead}>
             <Text style={styles.cardTitle}>{LABELS[r.recordType] ?? r.recordType}</Text>
-            <Text style={styles.cardCount}>{r.granted ? `${r.total}` : 'not allowed'}</Text>
+            <Text style={styles.cardCount}>{r.granted ? `${r.total}${r.truncated ? '+' : ''}` : 'not allowed'}</Text>
           </View>
           {r.error && <Text style={styles.error}>{r.error}</Text>}
+          {r.dedupNote && <Text style={styles.note}>{r.dedupNote}</Text>}
           {r.granted && r.total === 0 && !r.error && <Text style={styles.muted}>No records</Text>}
           {r.origins.map((o) => (
             <View key={o.origin} style={styles.originRow}>
@@ -106,6 +114,55 @@ export default function Diagnostics() {
         </View>
       ))}
     </ScrollView>
+  );
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const shortDate = (d: string) => `${MONTHS[Number(d.slice(5, 7)) - 1]} ${Number(d.slice(8, 10))}`;
+const hm = (min: number) => `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m`;
+
+/** What the game will actually count from the last 30 days, after merging and de-duplicating. */
+function SnapshotCard({ snapshot }: { snapshot: HealthSnapshot }) {
+  const rec = summarizeRecovery(snapshot.recovery);
+  const latest = snapshot.body[snapshot.body.length - 1];
+  const shown = [...snapshot.workouts].reverse().slice(0, 12);
+  return (
+    <View style={[styles.card, styles.snapshot]}>
+      <Text style={styles.cardTitle}>What Buffnik will count</Text>
+      <Text style={styles.muted}>Last 30 days, after merging and removing duplicates.</Text>
+
+      <Text style={styles.sectionLabel}>Workouts: {snapshot.workouts.length}</Text>
+      {shown.length === 0 && <Text style={styles.muted}>None yet. Swims, lifts and rides will show up here.</Text>}
+      {shown.map((w) => (
+        <Text key={w.id} style={styles.line}>
+          {shortDate(w.date)} · {w.kind} · {w.durationMin} min{w.distanceKm ? ` · ${w.distanceKm} km` : ''} · {w.origins.map(originLabel).join(' + ')}
+        </Text>
+      ))}
+      {snapshot.workouts.length > shown.length && <Text style={styles.muted}>…and {snapshot.workouts.length - shown.length} earlier</Text>}
+
+      <Text style={styles.sectionLabel}>Short walks, not workouts: {snapshot.walks.length}</Text>
+      <Text style={styles.muted}>Walks under {CONFIG.ingest.walkWorkoutMinMinutes} minutes feed steps and recovery only.</Text>
+
+      <Text style={styles.sectionLabel}>Recovery</Text>
+      <Text style={styles.line}>
+        Sleep: {rec.nights} nights{rec.avgSleepMin ? `, avg ${hm(rec.avgSleepMin)}` : ''}
+      </Text>
+      <Text style={styles.line}>HRV: {rec.avgHrvMs ? `avg ${rec.avgHrvMs} ms` : 'no data'}</Text>
+      <Text style={styles.line}>Steps: {rec.avgSteps ? `avg ${rec.avgSteps.toLocaleString()} a day` : 'no data'}</Text>
+
+      <Text style={styles.sectionLabel}>Weight</Text>
+      <Text style={styles.line}>
+        {latest
+          ? `${(latest.weightKg * LB_PER_KG).toFixed(1)} lb on ${shortDate(latest.date)}${latest.bodyFatPct ? ` · ${latest.bodyFatPct}% body fat` : ''}`
+          : 'No weigh-ins yet. Connect Renpho to Health Connect.'}
+      </Text>
+
+      {snapshot.errors.map((e) => (
+        <Text key={e} style={styles.error}>
+          {e}
+        </Text>
+      ))}
+    </View>
   );
 }
 
@@ -135,5 +192,9 @@ const styles = StyleSheet.create({
   originCount: { color: '#E6E1FF', fontVariant: ['tabular-nums'] },
   detail: { color: '#8E88AD', fontSize: 12, width: '100%' },
   muted: { color: '#8E88AD' },
+  note: { color: '#8E88AD', fontSize: 12 },
+  snapshot: { borderWidth: 1, borderColor: '#4B3FA0' },
+  sectionLabel: { color: '#D9D2FF', fontWeight: '600', marginTop: 8 },
+  line: { color: '#E6E1FF', fontSize: 14 },
   error: { color: '#FF8A8A' },
 });
