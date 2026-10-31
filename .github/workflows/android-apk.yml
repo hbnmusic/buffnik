@@ -13,6 +13,8 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    permissions:
+      contents: write # to publish the APK as a GitHub Release
     steps:
       - uses: actions/checkout@v4
 
@@ -65,8 +67,9 @@ jobs:
             "$BT/apksigner" sign --ks "$RUNNER_TEMP/buffnik.jks" \
               --ks-pass env:KEYSTORE_PASSWORD --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASSWORD \
               --out "$OUT" "$APK"
-            "$BT/apksigner" verify --print-certs "$OUT" | head -3
+            "$BT/apksigner" verify --print-certs "$OUT" | grep -E "SHA-256 digest|DN:"
             rm -f "$RUNNER_TEMP/buffnik.jks"
+            echo "SIGNED=true" >> "$GITHUB_ENV"
           else
             echo "::warning::No Buffnik signing key in repo secrets; APK uses the template's default key."
             cp "$APK" "${OUT%.apk}-defaultkey.apk"
@@ -77,3 +80,17 @@ jobs:
           name: buffnik-apk-${{ github.run_number }}
           path: buffnik-*.apk
           retention-days: 30
+
+      # Only builds signed with Buffnik's own key become releases, so the phone always
+      # downloads an APK that installs over the previous one.
+      - name: Publish GitHub Release
+        if: env.SIGNED == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "build-${{ github.run_number }}" "buffnik-${{ github.run_number }}.apk" \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "Buffnik build ${{ github.run_number }}" \
+            --notes "Built from ${{ github.sha }}." \
+            --latest
