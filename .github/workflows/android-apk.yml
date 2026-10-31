@@ -49,7 +49,7 @@ jobs:
         run: |
           set -o pipefail
           cd android
-          if ! ./gradlew assembleRelease --no-daemon 2>&1 | tee "$RUNNER_TEMP/gradle.log"; then
+          if ! ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a 2>&1 | tee "$RUNNER_TEMP/gradle.log"; then
             msg=$( (grep -A 30 "What went wrong" "$RUNNER_TEMP/gradle.log" || tail -n 60 "$RUNNER_TEMP/gradle.log") | head -n 80 \
               | sed -e ':a' -e 'N' -e '$!ba' -e 's/%/%25/g' -e 's/\r//g' -e 's/\n/%0A/g')
             echo "::error title=Gradle build failed::${msg}"
