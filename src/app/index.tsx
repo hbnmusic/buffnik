@@ -1,5 +1,5 @@
-import { Stack } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { Link, Stack } from 'expo-router';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CONFIG, initialStats, levelFromXp, STAT_KEYS } from '@/engine';
 
@@ -23,6 +23,11 @@ export default function Home() {
           </View>
         ))}
       </View>
+      <Link href="/diagnostics" asChild>
+        <Pressable style={({ pressed }) => [styles.button, pressed && { opacity: 0.7 }]}>
+          <Text style={styles.buttonText}>Check data sources</Text>
+        </Pressable>
+      </Link>
     </View>
   );
 }
@@ -35,4 +40,6 @@ const styles = StyleSheet.create({
   stat: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 12, backgroundColor: '#221E35' },
   statKey: { color: '#A9A3C7', fontSize: 12, letterSpacing: 1 },
   statValue: { color: '#F4F1FF', fontSize: 20, fontWeight: '600' },
+  button: { marginTop: 24, backgroundColor: '#7C5CFF', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  buttonText: { color: '#FFFFFF', fontWeight: '600', fontSize: 16 },
 });

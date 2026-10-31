@@ -1,0 +1,79 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install
+        run: npm ci
+
+      - name: Type-check and test
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Generate native Android project
+        env:
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Build release APK
+        env:
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          cd android
+          ./gradlew assembleRelease --no-daemon
+
+      # Re-sign with Buffnik's own key when the repo secrets exist. Without them the APK keeps
+      # the default key from the Expo template, which is the same on every run, so updates
+      # still install over each other, but it is a publicly known key.
+      - name: Sign APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.BUFFNIK_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.BUFFNIK_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.BUFFNIK_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.BUFFNIK_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          OUT=buffnik-${{ github.run_number }}.apk
+          if [ -n "${KEYSTORE_BASE64}" ]; then
+            BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/buffnik.jks"
+            "$BT/apksigner" sign --ks "$RUNNER_TEMP/buffnik.jks" \
+              --ks-pass env:KEYSTORE_PASSWORD --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASSWORD \
+              --out "$OUT" "$APK"
+            "$BT/apksigner" verify --print-certs "$OUT" | head -3
+            rm -f "$RUNNER_TEMP/buffnik.jks"
+          else
+            echo "::warning::No Buffnik signing key in repo secrets; APK uses the template's default key."
+            cp "$APK" "${OUT%.apk}-defaultkey.apk"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: buffnik-apk-${{ github.run_number }}
+          path: buffnik-*.apk
+          retention-days: 30
