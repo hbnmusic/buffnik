@@ -38,7 +38,7 @@ The files can also sit inside one top-level folder in the zip.
 
 ## Re-importing
 
-Importing a pack with the same `id` replaces it. Removing a pack removes its looks from the wardrobe and the shop; looks you bought are forgotten along with it, and anyone wearing one is switched to a starter look.
+Importing a pack with the same `id` replaces it. Removing a pack hides its looks from the wardrobe and the shop, and anyone wearing one is switched to a starter look. Importing the same pack again brings back the looks you had earned or bought.
 
 ## Prompt template for Gemini
 

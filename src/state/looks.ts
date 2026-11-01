@@ -1,5 +1,5 @@
 /** The look catalog (drawn starters plus imported art packs) and what the player owns. */
-import { STARTER_LOOKS, lookCoinPrice, ownedLookIds, type Look, type LookEvent } from '../engine';
+import { STARTER_LOOKS, lookCoinPrice, ownedLookIds, resolveLooks, type Look, type LookEvent } from '../engine';
 import type { Purchase } from '../engine';
 import type { PackManifest } from '../data/packs';
 import type { Store } from './store';
@@ -59,4 +59,4 @@ export function lookEvents(drops: { date: string; rarity: LookEvent['rarity']; e
   ];
 }
 
-export { lookCoinPrice, ownedLookIds };
+export { lookCoinPrice, ownedLookIds, resolveLooks };

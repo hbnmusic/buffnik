@@ -24,7 +24,7 @@ import type { PackManifest } from '../data/packs';
 import { loadBook, repairLooks, saveBook, type CharacterBook } from './characters';
 import { fetchWishlist, type FetchLike } from '../data/steam';
 import { loadCatalog, loadSteamCache, saveSteamCache, steamItems, type SteamCache } from './catalog';
-import { buildCatalog, loadPacks, lookCoinPrice, lookEvents, lookItemId, ownedLookIds } from './looks';
+import { buildCatalog, loadPacks, lookCoinPrice, lookEvents, lookItemId, resolveLooks } from './looks';
 import { loadSettings, type Settings } from './settings';
 import type { Look } from '../engine';
 import type { ScheduleContext } from './notifications';
@@ -88,7 +88,15 @@ export async function loadGame(store: Store, today = todayLocal()): Promise<Load
   const latest = body[body.length - 1];
   const state = replay(inputs);
   const lookCatalog = buildCatalog(packs);
-  const owned = ownedLookIds(lookCatalog, lookEvents(state.looks, purchases));
+  const stored = await store.getMeta('lookPicks');
+  let fixed: Record<string, string> = {};
+  try {
+    fixed = stored ? (JSON.parse(stored) as Record<string, string>) : {};
+  } catch {
+    fixed = {};
+  }
+  const { owned, picks } = resolveLooks(lookCatalog, lookEvents(state.looks, purchases), fixed);
+  if (Object.keys(picks).length !== Object.keys(fixed).length) await store.setMeta('lookPicks', JSON.stringify(picks));
   return {
     startDate,
     today,

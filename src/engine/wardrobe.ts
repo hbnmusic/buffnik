@@ -76,9 +76,20 @@ export interface LookEvent {
 
 const ORDER: Rarity[] = ['common', 'rare', 'epic', 'legendary'];
 
-/** Ids of every look the player owns, given the catalog and what has happened, in order. */
-export function ownedLookIds(catalog: Look[], events: LookEvent[]): string[] {
+export interface LookResolution {
+  /** Ids of every look owned, in catalog order. */
+  owned: string[];
+  /** Which look each loot drop gave, by drop event id. Store these: they keep past drops stable when the catalog grows. */
+  picks: Record<string, string>;
+}
+
+/**
+ * Work out the wardrobe. `fixed` holds picks made earlier; they are kept even if the catalog changed since
+ * (for example an art pack was added), and only drops without a stored pick are rolled.
+ */
+export function resolveLooks(catalog: Look[], events: LookEvent[], fixed: Record<string, string> = {}): LookResolution {
   const owned = new Set(catalog.filter((l) => l.starter).map((l) => l.id));
+  const picks: Record<string, string> = { ...fixed };
   const sorted = [...events].sort((a, b) => a.date.localeCompare(b.date) || a.eventId.localeCompare(b.eventId));
 
   for (const e of sorted) {
@@ -87,16 +98,28 @@ export function ownedLookIds(catalog: Look[], events: LookEvent[]): string[] {
       continue;
     }
     if (!e.rarity) continue;
+    const existing = picks[e.eventId];
+    if (existing) {
+      if (catalog.some((l) => l.id === existing)) owned.add(existing);
+      continue;
+    }
     // Prefer the rolled rarity, then lower ones, then higher, so a drop is never wasted while looks remain.
     const start = ORDER.indexOf(e.rarity);
     const tryOrder = [...ORDER.slice(0, start + 1).reverse(), ...ORDER.slice(start + 1)];
     for (const rarity of tryOrder) {
       const pool = catalog.filter((l) => l.rarity === rarity && !owned.has(l.id)).sort((a, b) => a.id.localeCompare(b.id));
       if (pool.length > 0) {
-        owned.add(pool[hashSeed(e.eventId) % pool.length].id);
+        const pick = pool[hashSeed(e.eventId) % pool.length].id;
+        owned.add(pick);
+        picks[e.eventId] = pick;
         break;
       }
     }
   }
-  return catalog.filter((l) => owned.has(l.id)).map((l) => l.id);
+  return { owned: catalog.filter((l) => owned.has(l.id)).map((l) => l.id), picks };
+}
+
+/** Ids of every look the player owns, given the catalog and what has happened, in order. */
+export function ownedLookIds(catalog: Look[], events: LookEvent[]): string[] {
+  return resolveLooks(catalog, events).owned;
 }

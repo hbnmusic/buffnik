@@ -40,3 +40,18 @@ test('wardrobe: an unknown purchased look is ignored, and prices rise with rarit
   assert.equal(ownedLookIds(STARTER_LOOKS, [{ date: '2026-11-01', kind: 'purchase', eventId: 'p', lookId: 'nope' }]).length, 3);
   assert.ok(lookCoinPrice('common') < lookCoinPrice('rare') && lookCoinPrice('epic') < lookCoinPrice('legendary'));
 });
+
+test('wardrobe: stored picks keep past drops stable when the catalog grows', async () => {
+  const { resolveLooks, STARTER_LOOKS } = await import('../src/engine/wardrobe');
+  const events = Array.from({ length: 6 }, (_, i) => ({ date: `2026-11-0${i + 1}`, kind: 'drop' as const, eventId: `d${i}`, rarity: 'rare' as const }));
+  const first = resolveLooks(STARTER_LOOKS, events);
+  const bigger = [
+    ...STARTER_LOOKS,
+    ...['a', 'b', 'c', 'd'].map((id) => ({ ...STARTER_LOOKS[8], id: `pack:${id}`, name: id, starter: undefined })),
+  ];
+  const drifted = resolveLooks(bigger, events); // without stored picks, some past drops may change
+  const stable = resolveLooks(bigger, events, first.picks);
+  for (const [eventId, lookId] of Object.entries(first.picks)) assert.equal(stable.picks[eventId], lookId);
+  for (const id of Object.values(first.picks)) assert.ok(stable.owned.includes(id));
+  assert.ok(drifted.owned.length >= first.owned.length);
+});
