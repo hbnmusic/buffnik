@@ -12,7 +12,7 @@ export async function loadPacks(store: Store): Promise<PackManifest[]> {
   if (!raw) return [];
   try {
     const list = JSON.parse(raw) as PackManifest[];
-    return Array.isArray(list) ? list : [];
+    return Array.isArray(list) ? list.filter((p) => p && typeof p.id === 'string' && Array.isArray(p.looks)) : [];
   } catch {
     return [];
   }

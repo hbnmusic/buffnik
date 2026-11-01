@@ -11,6 +11,7 @@ import { installPackFromZip, deletePackFiles } from '../data/packFiles';
 import { addPack, removePack } from './looks';
 import type { CharacterBook } from './characters';
 import { saveCatalog } from './catalog';
+import { exportBackup, pickBackup } from './backupDevice';
 import type { ShopItem } from '../engine';
 import { saveSettings, type Settings } from './settings';
 import { openSqliteStore } from './sqliteStore';
@@ -32,6 +33,10 @@ interface GameContextValue {
   /** Install an art pack from a zip file; returns the pack name. */
   importPack: (zipUri: string) => Promise<string>;
   deletePack: (packId: string) => Promise<void>;
+  /** Share a backup file (to Drive, Files...). */
+  makeBackup: () => Promise<void>;
+  /** Pick a backup file; null if cancelled. Call apply() after the user confirms. */
+  chooseBackup: () => Promise<{ summary: string; apply: () => Promise<void> } | null>;
   saveShopCatalog: (items: ShopItem[]) => Promise<void>;
   refreshSteamWishlist: () => Promise<void>;
   /** CSV text shared into the app from Strong, waiting for the import screen. */
@@ -167,6 +172,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
       await withStore((s) => removePack(s, packId));
       deletePackFiles(packId);
       await refresh();
+    },
+    makeBackup: async () => {
+      await withStore((s) => exportBackup(s));
+      await refreshQuietly();
+    },
+    chooseBackup: async () => {
+      const picked = await withStore((s) => pickBackup(s));
+      if (!picked) return null;
+      return {
+        summary: picked.summary,
+        apply: async () => {
+          await picked.apply();
+          await refreshQuietly();
+        },
+      };
     },
     saveShopCatalog: async (items) => {
       await withStore((s) => saveCatalog(s, items));

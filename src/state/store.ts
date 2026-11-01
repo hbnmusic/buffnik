@@ -8,7 +8,21 @@ import type { RawSession } from '../data/ingest';
 export type SessionSource = 'hc' | 'strong' | 'manual';
 export type BodySource = 'hc' | 'manual';
 
+/** Everything in the store, for backups. */
+export interface StoreDump {
+  meta: Record<string, string>;
+  sessions: { source: SessionSource; session: RawSession }[];
+  recovery: DailyRecovery[];
+  body: { source: BodySource; row: BodyCompReading }[];
+  purchases: Purchase[];
+}
+
 export interface Store {
+  /** Read every row. */
+  dumpAll(): Promise<StoreDump>;
+  /** Replace everything with the dump. */
+  restoreAll(dump: StoreDump): Promise<void>;
+
   getMeta(key: string): Promise<string | null>;
   setMeta(key: string, value: string): Promise<void>;
 
@@ -39,6 +53,27 @@ export function createMemoryStore(): Store {
   const purchases = new Map<string, Purchase>();
 
   return {
+    async dumpAll() {
+      return {
+        meta: Object.fromEntries(meta),
+        sessions: [...sessions.values()].map((v) => ({ source: v.source, session: v.session })),
+        recovery: [...recovery.values()],
+        body: [...body.entries()].map(([k, row]) => ({ source: k.split('|')[1] as BodySource, row })),
+        purchases: [...purchases.values()],
+      };
+    },
+    async restoreAll(d) {
+      meta.clear();
+      sessions.clear();
+      recovery.clear();
+      body.clear();
+      purchases.clear();
+      for (const [k, v] of Object.entries(d.meta)) meta.set(k, v);
+      for (const s of d.sessions) sessions.set(s.session.id, s);
+      for (const r of d.recovery) recovery.set(r.date, r);
+      for (const b of d.body) body.set(`${b.row.date}|${b.source}`, b.row);
+      for (const p of d.purchases) purchases.set(p.id, p);
+    },
     async getMeta(key) {
       return meta.get(key) ?? null;
     },

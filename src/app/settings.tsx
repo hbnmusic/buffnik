@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Switch, Text, TextInput, View } from 'react-native';
 
 import { parseTime, type Settings } from '@/state/settings';
 import { useGame } from '@/state/GameProvider';
@@ -37,7 +37,7 @@ function TimeField({ label, value, onCommit }: { label: string; value: string; o
 }
 
 export default function SettingsScreen() {
-  const { loaded, updateSettings, enableNotifications } = useGame();
+  const { loaded, updateSettings, enableNotifications, makeBackup, chooseBackup } = useGame();
   const [message, setMessage] = useState<string | null>(null);
   if (!loaded) return <Screen><Text style={t.muted}>Loading…</Text></Screen>;
 
@@ -68,7 +68,74 @@ export default function SettingsScreen() {
         </View>
         <Text style={t.small}>Workout minutes above 70% of this earn intensity XP. A common estimate is 220 minus your age.</Text>
       </Card>
+
+      <Card title="Steam">
+        <Text style={t.muted}>Profile name, link or 64-bit id for your wishlist. Your profile and game details must be public.</Text>
+        <SteamField value={s.steamId} onCommit={(v) => updateSettings({ ...s, steamId: v })} />
+      </Card>
+
+      <Card title="Backup">
+        <Text style={t.muted}>
+          {loaded.daysSinceBackup === null ? 'No backup yet.' : loaded.daysSinceBackup === 0 ? 'Backed up today.' : `Last backup ${loaded.daysSinceBackup} days ago.`}
+        </Text>
+        <Btn
+          label="Back up now (save to Drive)"
+          onPress={async () => {
+            try {
+              await makeBackup();
+            } catch (e) {
+              Alert.alert('Backup failed', e instanceof Error ? e.message : String(e));
+            }
+          }}
+        />
+        <Btn
+          label="Restore from a backup file"
+          secondary
+          onPress={async () => {
+            try {
+              const picked = await chooseBackup();
+              if (!picked) return;
+              Alert.alert('Replace everything?', `This replaces all data in the app with the backup: ${picked.summary}.`, [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Restore',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      await picked.apply();
+                      Alert.alert('Restored', 'Your data is back.');
+                    } catch (e) {
+                      Alert.alert('Restore failed', e instanceof Error ? e.message : String(e));
+                    }
+                  },
+                },
+              ]);
+            } catch (e) {
+              Alert.alert('Could not read that file', e instanceof Error ? e.message : String(e));
+            }
+          }}
+        />
+        <Text style={t.small}>
+          The backup is a JSON file with your workouts, weigh-ins, purchases and settings. In the share sheet pick Drive. Art pack images are not included; import the zip again after a restore.
+        </Text>
+      </Card>
     </Screen>
+  );
+}
+
+function SteamField({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
+  const [text, setText] = useState(value);
+  return (
+    <TextInput
+      style={inputStyle}
+      value={text}
+      onChangeText={setText}
+      onEndEditing={() => onCommit(text.trim())}
+      autoCapitalize="none"
+      autoCorrect={false}
+      placeholder="acowfromspace"
+      placeholderTextColor={C.faint}
+    />
   );
 }
 

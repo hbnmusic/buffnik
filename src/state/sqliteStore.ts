@@ -3,7 +3,7 @@ import * as SQLite from 'expo-sqlite';
 
 import type { BodyCompReading, DailyRecovery, Purchase } from '../engine';
 import type { RawSession } from '../data/ingest';
-import type { Store } from './store';
+import type { BodySource, SessionSource, Store } from './store';
 
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
@@ -22,6 +22,28 @@ export async function openSqliteStore(): Promise<Store> {
     (await db.getAllAsync<{ json: string }>(sql, ...params)).map((r) => JSON.parse(r.json) as T);
 
   return {
+    async dumpAll() {
+      const meta = await db.getAllAsync<{ key: string; value: string }>('SELECT key, value FROM meta');
+      const sessions = await db.getAllAsync<{ source: string; json: string }>('SELECT source, json FROM sessions');
+      const body = await db.getAllAsync<{ source: string; json: string }>('SELECT source, json FROM body');
+      return {
+        meta: Object.fromEntries(meta.map((m) => [m.key, m.value])),
+        sessions: sessions.map((r) => ({ source: r.source as SessionSource, session: JSON.parse(r.json) as RawSession })),
+        recovery: await docs<DailyRecovery>('SELECT json FROM recovery ORDER BY date'),
+        body: body.map((r) => ({ source: r.source as BodySource, row: JSON.parse(r.json) as BodyCompReading })),
+        purchases: await docs<Purchase>('SELECT json FROM purchases ORDER BY date, id'),
+      };
+    },
+    async restoreAll(d) {
+      await db.withTransactionAsync(async () => {
+        for (const t of ['meta', 'sessions', 'recovery', 'body', 'purchases']) await db.runAsync(`DELETE FROM ${t}`);
+        for (const [k, v] of Object.entries(d.meta)) await db.runAsync('INSERT INTO meta (key, value) VALUES (?, ?)', k, v);
+        for (const s of d.sessions) await db.runAsync('INSERT OR REPLACE INTO sessions (id, source, start_ms, json) VALUES (?, ?, ?, ?)', s.session.id, s.source, s.session.startMs, JSON.stringify(s.session));
+        for (const r of d.recovery) await db.runAsync('INSERT OR REPLACE INTO recovery (date, json) VALUES (?, ?)', r.date, JSON.stringify(r));
+        for (const b of d.body) await db.runAsync('INSERT OR REPLACE INTO body (date, source, json) VALUES (?, ?, ?)', b.row.date, b.source, JSON.stringify(b.row));
+        for (const p of d.purchases) await db.runAsync('INSERT OR REPLACE INTO purchases (id, date, json) VALUES (?, ?, ?)', p.id, p.date, JSON.stringify(p));
+      });
+    },
     async getMeta(key) {
       const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM meta WHERE key = ?', key);
       return row?.value ?? null;
