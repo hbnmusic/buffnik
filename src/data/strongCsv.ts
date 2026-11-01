@@ -149,3 +149,9 @@ export function parseStrongCsv(text: string, unit: WeightUnit): ParseResult {
   const sessions = [...byKey.values()].sort((a, b) => a.startedAt.localeCompare(b.startedAt));
   return { sessions, skippedRows: skipped };
 }
+
+/** Quick check that shared text or a file is a Strong export, before importing. */
+export function looksLikeStrongCsv(text: string): boolean {
+  const first = text.replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0]?.toLowerCase() ?? '';
+  return first.includes('exercise name') && first.includes('reps') && first.includes('date');
+}

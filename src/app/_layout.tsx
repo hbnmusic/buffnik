@@ -1,11 +1,16 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
+import { ShareIntentProvider } from 'expo-share-intent';
+
 import { GameProvider } from '@/state/GameProvider';
+import { ShareHandler } from '@/state/ShareHandler';
 
 export default function RootLayout() {
   return (
+    <ShareIntentProvider>
     <GameProvider>
+      <ShareHandler />
       <StatusBar style="light" />
       <Stack
         screenOptions={{
@@ -21,5 +26,6 @@ export default function RootLayout() {
         <Stack.Screen name="diagnostics" options={{ title: 'Data sources' }} />
       </Stack>
     </GameProvider>
+    </ShareIntentProvider>
   );
 }

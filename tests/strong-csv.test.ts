@@ -43,3 +43,11 @@ test('strong csv: duration formats', () => {
   assert.equal(parseDurationMin('30s'), 0.5);
   assert.equal(parseDurationMin(''), 0);
 });
+
+test('strong csv: recognises a Strong export from its header', async () => {
+  const { looksLikeStrongCsv } = await import('../src/data/strongCsv');
+  assert.equal(looksLikeStrongCsv('Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps\n2026-11-03 09:00:00,Push,1h,Bench,1,100,5'), true);
+  assert.equal(looksLikeStrongCsv('﻿Date;Workout Name;Exercise Name;Reps'), true);
+  assert.equal(looksLikeStrongCsv('hello there'), false);
+  assert.equal(looksLikeStrongCsv(''), false);
+});

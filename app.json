@@ -48,6 +48,18 @@
             "minSdkVersion": 26
           }
         }
+      ],
+      [
+        "expo-share-intent",
+        {
+          "disableIOS": true,
+          "androidIntentFilters": [
+            "text/*",
+            "application/octet-stream",
+            "application/vnd.ms-excel",
+            "application/csv"
+          ]
+        }
       ]
     ],
     "experiments": {

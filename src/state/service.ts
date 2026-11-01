@@ -35,6 +35,8 @@ export interface Loaded {
   walks: ActivityEvent[];
   latestWeightLb?: number;
   lastSync: string | null;
+  /** Unit of the last Strong import, used by one-tap imports from the share sheet. */
+  strongUnit: WeightUnit;
 }
 
 /** The game starts on the day the app first runs; everything earlier is baseline only. */
@@ -47,12 +49,13 @@ export async function ensureStartDate(store: Store, today: string): Promise<stri
 
 export async function loadGame(store: Store, today = todayLocal()): Promise<Loaded> {
   const startDate = await ensureStartDate(store, today);
-  const [sessions, recovery, body, purchases, lastSync] = await Promise.all([
+  const [sessions, recovery, body, purchases, lastSync, strongUnit] = await Promise.all([
     store.listSessions(),
     store.listRecovery(),
     store.listBody(),
     store.listPurchases(),
     store.getMeta('lastSync'),
+    store.getMeta('strongUnit'),
   ]);
   const { workouts, walks } = buildActivityEvents(sessions);
   const inputs: GameInputs = { startDate, today, activities: workouts, recovery, body, purchases };
@@ -65,6 +68,7 @@ export async function loadGame(store: Store, today = todayLocal()): Promise<Load
     walks: [...walks].reverse(),
     latestWeightLb: latest ? Math.round(latest.weightKg * LB_PER_KG * 10) / 10 : undefined,
     lastSync,
+    strongUnit: strongUnit === 'kg' ? 'kg' : 'lb',
   };
 }
 
@@ -100,6 +104,7 @@ export interface StrongImportSummary {
 
 export async function importStrong(store: Store, csvText: string, unit: WeightUnit, today = todayLocal()): Promise<StrongImportSummary> {
   const parsed = parseStrongCsv(csvText, unit);
+  await store.setMeta('strongUnit', unit);
   const raws = parsed.sessions.flatMap((s) => {
     const r = strongToRaw(s);
     return r ? [r] : [];

@@ -101,3 +101,20 @@ test('service: buying spends coins and budget, and refuses what you cannot affor
   assert.ok(after.state.coins <= before.state.coins - 80 + 1);
   assert.equal(after.state.budget.spentUsd, 8);
 });
+
+test('service: the weight unit of the last Strong import is remembered for one-tap imports', async () => {
+  const store = createMemoryStore();
+  assert.equal((await loadGame(store, '2026-11-01')).strongUnit, 'lb');
+  await importStrong(store, CSV, 'kg', TODAY);
+  assert.equal((await loadGame(store, TODAY)).strongUnit, 'kg');
+});
+
+test('service: re-importing in the other unit corrects the sets instead of duplicating', async () => {
+  const store = createMemoryStore();
+  await loadGame(store, '2026-11-01');
+  await importStrong(store, CSV, 'lb', TODAY);
+  await importStrong(store, CSV, 'kg', TODAY);
+  const g = await loadGame(store, TODAY);
+  assert.equal(g.workouts.filter((w) => w.date === '2026-11-03').length, 1);
+  assert.equal(g.workouts.find((w) => w.date === '2026-11-03')!.sets![0].weightKg, 135); // read as kg this time
+});

@@ -19,6 +19,9 @@ interface GameContextValue {
   addWorkout: (w: { kind: ActivityKind; date: string; durationMin: number; distanceKm?: number }) => Promise<void>;
   addWeight: (date: string, weightLb: number, bodyFatPct?: number) => Promise<void>;
   purchase: (itemId: string) => Promise<BuyResult>;
+  /** CSV text shared into the app from Strong, waiting for the import screen. */
+  pendingShare: string | null;
+  setPendingShare: (text: string | null) => void;
 }
 
 const GameContext = createContext<GameContextValue | null>(null);
@@ -37,6 +40,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [pendingShare, setPendingShare] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (storeRef.current) setLoaded(await loadGame(storeRef.current));
@@ -92,6 +96,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
     error,
     syncing,
     syncMessage,
+    pendingShare,
+    setPendingShare,
     sync,
     importStrongCsv: async (text, unit) => {
       const summary = await withStore((s) => importStrong(s, text, unit));
