@@ -1,5 +1,7 @@
 # Character art packs
 
+The easiest way to make a pack is a single character sheet from Gemini: see `gemini-sheet-prompt.md`. Buffnik cuts the sheet up and writes this format for you. The rest of this page describes the format itself, for packs you build by hand.
+
 An art pack is a zip file you import in the app (Hero tab, Art packs, Import art pack). Each look in the pack is a full-body image. When you wear a look from a pack, the image replaces the drawn character. Pack looks join the loot pool and the shop, priced by rarity.
 
 ## Zip layout
@@ -33,6 +35,8 @@ The files can also sit inside one top-level folder in the zip.
 - `id` (pack and look): lowercase letters, digits and dashes, up to 40 characters.
 - `rarity`: `common`, `rare`, `epic` or `legendary`. Shop prices are 200, 600, 1,500 and 4,000 coins.
 - `image`: png, jpg or webp, up to 8 MB per file, 120 MB per pack, up to 200 looks.
+- `slot` (optional): `head`, `face`, `body`, `hands`, `feet`, `back`, `weapon` or `accessory`. A look with a slot is a gear item: it is shown as a square icon and worn beside the character (one item per slot). Without a slot it is a full-body outfit. Gear costs 60, 200, 500 or 1,500 coins by rarity.
+- `starter` (optional, true): owned from the start, with no coins or loot needed.
 - `tiers` (optional): images for body build tiers 1 to 5. Any tier without an image uses `image`. Tier 1 is the starting build; higher tiers are broader and more muscular.
 - Images work best portrait, about 2:3 (the app shows them at 5:8 with the whole figure visible), with a plain or transparent background. Transparent png shows the rarity colour behind the character.
 

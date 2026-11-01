@@ -6,8 +6,9 @@ import type { WeightUnit } from '../data/strongCsv';
 import { registerBackgroundSync } from './background';
 import { announceAndSchedule, runSyncCycle } from './cycle';
 import { requestNotificationPermission } from './notify';
-import { buy, buyLook, importStrong, loadGame, logWeight, logWorkout, saveCharacters, refreshSteam, type BuyResult, type Loaded, type StrongImportSummary } from './service';
-import { installPackFromZip, deletePackFiles } from '../data/packFiles';
+import { buy, buyLook, importStrong, loadGame, logWeight, logWorkout, saveCharacters, refreshSteam, adoptSheetPack, type BuyResult, type Loaded, type StrongImportSummary } from './service';
+import { installPackFromZip, deletePackFiles, writePackFiles } from '../data/packFiles';
+import type { SheetPlan } from '../data/sheet/plan';
 import { addPack, removePack } from './looks';
 import type { CharacterBook } from './characters';
 import { saveCatalog } from './catalog';
@@ -33,6 +34,11 @@ interface GameContextValue {
   /** Install an art pack from a zip file; returns the pack name. */
   importPack: (zipUri: string) => Promise<string>;
   deletePack: (packId: string) => Promise<void>;
+  /** Write a planned sheet pack to the phone and put its base character in a slot. */
+  importSheet: (plan: SheetPlan, replaceFiles: boolean) => Promise<void>;
+  /** An image shared into the app (for example from Gemini), waiting for the sheet import screen. */
+  pendingImage: string | null;
+  setPendingImage: (uri: string | null) => void;
   /** Share a backup file (to Drive, Files...). */
   makeBackup: () => Promise<void>;
   /** Pick a backup file; null if cancelled. Call apply() after the user confirms. */
@@ -67,6 +73,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [pendingShare, setPendingShare] = useState<string | null>(null);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!storeRef.current) return;
@@ -134,6 +141,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
     syncMessage,
     pendingShare,
     setPendingShare,
+    pendingImage,
+    setPendingImage,
     sync,
     importStrongCsv: async (text, unit) => {
       const summary = await withStore((s) => importStrong(s, text, unit));
@@ -167,6 +176,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
       await withStore((s) => addPack(s, manifest));
       await refresh();
       return manifest.name;
+    },
+    importSheet: async (plan, replaceFiles) => {
+      writePackFiles(plan.manifest.id, plan.files, replaceFiles);
+      await withStore((s) =>
+        adoptSheetPack(s, plan.manifest, plan.baseLookId ? { lookId: plan.baseLookId, name: plan.baseLookName ?? plan.manifest.name } : undefined),
+      );
+      await refresh();
     },
     deletePack: async (packId) => {
       await withStore((s) => removePack(s, packId));

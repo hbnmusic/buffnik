@@ -12,13 +12,20 @@ import { useGame } from './GameProvider';
  */
 export function ShareHandler() {
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
-  const { setPendingShare } = useGame();
+  const { setPendingShare, setPendingImage } = useGame();
 
   useEffect(() => {
     if (!hasShareIntent) return;
     (async () => {
       let text: string | null = null;
       const file = shareIntent.files?.[0];
+      if (file?.mimeType?.startsWith('image/')) {
+        // A character sheet image: open the sheet import screen.
+        setPendingImage(file.path);
+        resetShareIntent();
+        setTimeout(() => router.push('/import-sheet'), 0);
+        return;
+      }
       if (file?.path) {
         try {
           text = await new File(file.path).text();
@@ -33,7 +40,7 @@ export function ShareHandler() {
       setPendingShare(text && looksLikeStrongCsv(text) ? text : '');
       setTimeout(() => router.push('/import-strong'), 0);
     })();
-  }, [hasShareIntent, shareIntent, resetShareIntent, setPendingShare]);
+  }, [hasShareIntent, shareIntent, resetShareIntent, setPendingShare, setPendingImage]);
 
   return null;
 }

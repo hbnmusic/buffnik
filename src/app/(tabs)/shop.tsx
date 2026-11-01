@@ -2,16 +2,17 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Text, View } from 'react-native';
 
-import { CONFIG, budgetRemainingUsd, checkRedeem, isDollarBacked, lookCoinPrice, priceInCoins, type Look, type ShopItem } from '@/engine';
+import { CONFIG, budgetRemainingUsd, checkRedeem, isDollarBacked, itemCoinPrice, priceInCoins, GEAR_SLOTS, type Look, type ShopItem } from '@/engine';
 import { activeCharacter } from '@/state/characters';
 import { useGame } from '@/state/GameProvider';
-import { CharacterView } from '@/ui/CharacterView';
+import { CharacterView, ItemIcon } from '@/ui/CharacterView';
 import { shortDate, usd } from '@/ui/format';
-import { Btn, C, Card, Row, Screen, t } from '@/ui/theme';
+import { Btn, C, Card, Chip, Row, Screen, t } from '@/ui/theme';
 
 export default function Shop() {
   const { loaded, purchase, purchaseLook, refreshSteamWishlist } = useGame();
   const [steamBusy, setSteamBusy] = useState(false);
+  const [gearFilter, setGearFilter] = useState<'all' | (typeof GEAR_SLOTS)[number]>('all');
   if (!loaded) return <Screen><Text style={t.muted}>Loading…</Text></Screen>;
   const { state, shopItems, steam, lookCatalog, ownedLookIds, characters } = loaded;
 
@@ -19,7 +20,10 @@ export default function Shop() {
   const games = shopItems.filter((i) => i.kind === 'steam');
   const utility = shopItems.filter((i) => !isDollarBacked(i));
   const hero = activeCharacter(characters);
-  const lockedLooks = lookCatalog.filter((l) => !ownedLookIds.includes(l.id));
+  const locked = lookCatalog.filter((l) => !ownedLookIds.includes(l.id));
+  const lockedLooks = locked.filter((l) => !l.slot);
+  const lockedGear = locked.filter((l) => l.slot && (gearFilter === 'all' || l.slot === gearFilter));
+  const gearTotal = locked.filter((l) => l.slot).length;
 
   const confirm = (name: string, coinCost: number, dollars: number, buyIt: () => Promise<{ ok: boolean; reason?: string }>) => {
     const cost = [`${coinCost} coins`, dollars > 0 ? `${usd(dollars)} from this month's budget` : null].filter(Boolean).join(' and ');
@@ -49,8 +53,26 @@ export default function Shop() {
     );
   };
 
+  const gearRow = (l: Look) => {
+    const price = itemCoinPrice(l);
+    return (
+      <Card key={l.id}>
+        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+          <ItemIcon look={l} size={56} />
+          <View style={{ flex: 1 }}>
+            <Text style={t.body}>{l.name}</Text>
+            <Text style={t.small}>{l.slot} · {l.rarity}</Text>
+          </View>
+          <View style={{ width: 120 }}>
+            <Btn label={`${price} coins`} onPress={() => confirm(l.name, price, 0, () => purchaseLook(l.id))} disabled={state.coins < price} secondary />
+          </View>
+        </View>
+      </Card>
+    );
+  };
+
   const lookCard = (l: Look) => {
-    const price = lookCoinPrice(l.rarity);
+    const price = itemCoinPrice(l);
     return (
       <Card key={l.id}>
         <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
@@ -111,9 +133,23 @@ export default function Shop() {
         })}
       </View>
 
-      <Text style={t.h2}>Looks</Text>
-      <Text style={t.small}>Outfits for your character. Cheaper ones drop as loot too.</Text>
+      <Text style={t.h2}>Outfits</Text>
+      <Text style={t.small}>Full looks for your character. They also drop as loot.</Text>
       <View style={{ gap: 12 }}>{lockedLooks.length === 0 ? <Text style={t.muted}>You own every look.</Text> : lockedLooks.map(lookCard)}</View>
+
+      {gearTotal > 0 && (
+        <>
+          <Text style={t.h2}>Gear</Text>
+          <Text style={t.small}>Items your character wears, from your art packs. {gearTotal} left to unlock.</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <Chip label="All" selected={gearFilter === 'all'} onPress={() => setGearFilter('all')} />
+            {GEAR_SLOTS.map((s) => (
+              <Chip key={s} label={s} selected={gearFilter === s} onPress={() => setGearFilter(s)} />
+            ))}
+          </View>
+          <View style={{ gap: 10 }}>{lockedGear.map(gearRow)}</View>
+        </>
+      )}
 
       <Text style={t.h2}>Utilities</Text>
       <View style={{ gap: 12 }}>{utility.map((i) => item(i))}</View>

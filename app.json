@@ -59,7 +59,8 @@
             "text/*",
             "application/octet-stream",
             "application/vnd.ms-excel",
-            "application/csv"
+            "application/csv",
+            "image/*"
           ]
         }
       ],

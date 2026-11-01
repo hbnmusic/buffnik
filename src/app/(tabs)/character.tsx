@@ -2,12 +2,14 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useState } from 'react';
 import { Alert, Pressable, Text, TextInput, View } from 'react-native';
 
-import { addCharacter, activeCharacter, MAX_CHARACTERS, removeCharacter, setActive, updateCharacter, type Character } from '@/state/characters';
+import { router } from 'expo-router';
+
+import { addCharacter, activeCharacter, equipGear, MAX_CHARACTERS, removeCharacter, setActive, updateCharacter, type Character } from '@/state/characters';
 import { useGame } from '@/state/GameProvider';
-import { CharacterView } from '@/ui/CharacterView';
+import { CharacterView, ItemIcon } from '@/ui/CharacterView';
 import { EYE_COLORS, HAIR_COLORS, HAIR_STYLES, SKIN_TONES } from '@/ui/characterSpec';
 import { Btn, C, Card, Chip, Screen, inputStyle, t } from '@/ui/theme';
-import type { Look } from '@/engine';
+import { GEAR_SLOTS, type Look } from '@/engine';
 
 const RARITY_COLOR: Record<string, string> = { common: '#A9A3C7', rare: '#6EA8FF', epic: '#C58BFF', legendary: '#FFD166' };
 
@@ -34,7 +36,13 @@ export default function CharacterTab() {
   const { characters: book, lookCatalog, ownedLookIds, state, packs } = loaded;
   const hero = activeCharacter(book);
   const look = lookCatalog.find((l) => l.id === hero.lookId) ?? lookCatalog[0];
-  const owned = lookCatalog.filter((l) => ownedLookIds.includes(l.id));
+  const ownedAll = lookCatalog.filter((l) => ownedLookIds.includes(l.id));
+  const owned = ownedAll.filter((l) => !l.slot);
+  const ownedGear = ownedAll.filter((l) => l.slot);
+  const worn = GEAR_SLOTS.flatMap((slot) => {
+    const item = lookCatalog.find((l) => l.id === hero.gear?.[slot]);
+    return item ? [item] : [];
+  });
   const patch = (p: Partial<Omit<Character, 'id'>>) => saveCharacterBook(updateCharacter(book, hero.id, p));
   const fail = (e: unknown) => Alert.alert('Could not do that', e instanceof Error ? e.message : String(e));
 
@@ -67,6 +75,16 @@ export default function CharacterTab() {
         <CharacterView character={hero} look={look} tier={state.buildTier} width={220} />
         <Text style={t.h2}>{hero.name}</Text>
         <Text style={t.small}>{look.name} · build tier {state.buildTier} (changes as your strength and body composition do)</Text>
+        {worn.length > 0 && (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+            {worn.map((g) => (
+              <View key={g.id} style={{ alignItems: 'center', gap: 2 }}>
+                <ItemIcon look={g} size={52} />
+                <Text style={{ color: C.faint, fontSize: 10 }}>{g.slot}</Text>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
 
       <Card title="Characters">
@@ -130,10 +148,38 @@ export default function CharacterTab() {
         <Swatches colors={EYE_COLORS} value={hero.eyeColor} onPick={(c) => patch({ eyeColor: c })} />
       </Card>
 
-      <Card title={`Wardrobe · ${owned.length} of ${lookCatalog.length} looks`}>
+      <Card title={`Outfits · ${owned.length} of ${lookCatalog.filter((l) => !l.slot).length}`}>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between' }}>{owned.map(lookTile)}</View>
-        <Text style={t.small}>Looks drop as loot after workouts, or you can buy them in the Shop with coins.</Text>
+        <Text style={t.small}>Outfits and gear drop as loot after workouts, or you can buy them in the Shop with coins.</Text>
       </Card>
+
+      {ownedGear.length > 0 && (
+        <Card title={`Gear · ${ownedGear.length} owned`}>
+          <Text style={t.small}>One item per slot. Tap to wear it, tap again to take it off.</Text>
+          {GEAR_SLOTS.map((slot) => {
+            const inSlot = ownedGear.filter((g) => g.slot === slot);
+            if (inSlot.length === 0) return null;
+            return (
+              <View key={slot} style={{ gap: 6 }}>
+                <Text style={t.small}>{slot}</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {inSlot.map((g) => {
+                    const on = hero.gear?.[slot] === g.id;
+                    return (
+                      <Pressable key={g.id} onPress={() => saveCharacterBook(equipGear(book, hero.id, slot, on ? null : g.id))} style={{ alignItems: 'center', width: 64, gap: 2, opacity: on ? 1 : 0.75 }}>
+                        <View style={{ borderWidth: 2, borderRadius: 14, borderColor: on ? '#FFFFFF' : 'transparent', padding: 1 }}>
+                          <ItemIcon look={g} size={54} />
+                        </View>
+                        <Text style={{ color: RARITY_COLOR[g.rarity], fontSize: 10, textAlign: 'center' }} numberOfLines={2}>{g.name}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            );
+          })}
+        </Card>
+      )}
 
       <Card title="Art packs">
         <Text style={t.muted}>
@@ -154,6 +200,7 @@ export default function CharacterTab() {
             </Pressable>
           </View>
         ))}
+        <Btn label="Import character sheet (image)" onPress={() => router.push('/import-sheet')} />
         <Btn label={busy ? 'Importing…' : 'Import art pack (.zip)'} onPress={pickPack} disabled={busy} secondary />
       </Card>
     </Screen>

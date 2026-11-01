@@ -61,3 +61,12 @@ export function CharacterView({ character, look, tier, width = 200 }: { characte
     </View>
   );
 }
+
+/** A gear item as a square icon (art-pack image on the rarity colour). */
+export function ItemIcon({ look, size = 56 }: { look: Look; size?: number }) {
+  return (
+    <View style={{ width: size, height: size, borderRadius: 12, backgroundColor: RARITY_BACKGROUND[look.rarity], overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
+      {look.pack ? <Image source={{ uri: packImageUri(look.pack.packId, look.pack.image) }} style={{ width: size - 8, height: size - 8 }} resizeMode="contain" /> : null}
+    </View>
+  );
+}

@@ -21,10 +21,10 @@ import {
 import { buildActivityEvents, deviceLocalDate, strongToRaw, type RawSession } from '../data/ingest';
 import { parseStrongCsv, type WeightUnit } from '../data/strongCsv';
 import type { PackManifest } from '../data/packs';
-import { loadBook, repairLooks, saveBook, type CharacterBook } from './characters';
+import { addCharacter, loadBook, MAX_CHARACTERS, repairLooks, saveBook, updateCharacter, type CharacterBook } from './characters';
 import { fetchWishlist, type FetchLike } from '../data/steam';
 import { loadCatalog, loadSteamCache, saveSteamCache, steamItems, type SteamCache } from './catalog';
-import { buildCatalog, loadPacks, itemCoinPrice, lookEvents, lookItemId, resolveLooks } from './looks';
+import { addPack, packLookId, buildCatalog, loadPacks, itemCoinPrice, lookEvents, lookItemId, resolveLooks } from './looks';
 import { loadSettings, type Settings } from './settings';
 import type { Look } from '../engine';
 import type { ScheduleContext } from './notifications';
@@ -309,4 +309,19 @@ export async function refreshSteam(store: Store, f: FetchLike, now = Date.now())
   const cache: SteamCache = { fetchedAt: new Date(now).toISOString(), games: keep, problem: result.problem, unpriced: result.unpriced };
   await saveSteamCache(store, cache);
   return cache;
+}
+
+/** After a sheet import: store the pack, and put the sheet's base character on a character slot (a new one if there is room). */
+export async function adoptSheetPack(store: Store, manifest: PackManifest, base?: { lookId: string; name: string }): Promise<void> {
+  await addPack(store, manifest);
+  if (!base) return;
+  let book = await loadBook(store);
+  const lookId = packLookId(manifest.id, base.lookId);
+  if (book.slots.length < MAX_CHARACTERS) {
+    const id = `hero-${Date.now()}`;
+    book = updateCharacter(addCharacter(book, base.name.slice(0, 20), id), id, { lookId });
+  } else {
+    book = updateCharacter(book, book.activeId, { lookId });
+  }
+  await saveBook(store, book);
 }
