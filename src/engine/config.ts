@@ -38,6 +38,8 @@ export const CONFIG = {
   ingest: {
     /** An auto-detected walk counts as a workout only if it lasts at least this long (after merging). */
     walkWorkoutMinMinutes: 45,
+    /** ...and only if its average pace is at least this fast (km/h), which filters out wandering around the house or office. 0 turns the filter off. */
+    walkWorkoutMinKmh: 3,
     /** Walk fragments separated by less than this are one walk. */
     walkMergeGapMinutes: 10,
     /** Two sessions overlapping by this fraction of the shorter one are the same session. */

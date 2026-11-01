@@ -195,7 +195,7 @@ export async function readHealthSnapshot(days = 30, now = new Date()): Promise<H
     async () => {
       const { records } = await readAll('ExerciseSession', startTime, endTime, 20);
       const raw: RawSession[] = records.map((r) => ({
-        id: r.metadata?.id ?? r.startTime,
+        id: `hc:${r.metadata?.dataOrigin ?? 'unknown'}:${r.metadata?.id ?? r.startTime}`,
         origin: r.metadata?.dataOrigin ?? 'unknown',
         typeName: exerciseName(r.exerciseType),
         startMs: Date.parse(r.startTime),

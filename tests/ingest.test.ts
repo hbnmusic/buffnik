@@ -4,7 +4,9 @@ import {
   buildActivityEvents,
   buildBodyComp,
   buildDailyRecovery,
+  deviceLocalDate,
   kindFromTypeName,
+  strongToRaw,
   sleepMinutes,
   summarizeRecovery,
   type RawSession,
@@ -18,7 +20,7 @@ const T0 = Date.UTC(2026, 10, 2, 12, 0); // Mon 2026-11-02 12:00 UTC
 const session = (over: Partial<RawSession> & { startMin: number; durMin: number }): RawSession => {
   const { startMin, durMin, ...rest } = over;
   return {
-    id: String(Math.random()),
+    id: `hc:${rest.origin ?? 'com.google.android.apps.fitness'}:${Math.random()}`,
     origin: 'com.google.android.apps.fitness',
     typeName: 'WALKING',
     startMs: T0 + startMin * MIN,
@@ -98,13 +100,13 @@ test('walks: a walk inside a swim is part of the swim', () => {
 test('dedup: the same lift from Strong and Google Fit counts once, Strong wins', () => {
   const r = buildActivityEvents(
     [
-      session({ startMin: 0, durMin: 60, typeName: 'STRENGTH_TRAINING', origin: 'com.google.android.apps.fitness', id: 'fit' }),
-      session({ startMin: 2, durMin: 55, typeName: 'WEIGHTLIFTING', origin: 'io.strongapp.strong', id: 'strong' }),
+      session({ startMin: 0, durMin: 60, typeName: 'STRENGTH_TRAINING', origin: 'com.google.android.apps.fitness', id: 'hc:fit:1' }),
+      session({ startMin: 2, durMin: 55, typeName: 'WEIGHTLIFTING', origin: 'io.strongapp.strong', id: 'hc:strong:1' }),
     ],
     utcDate,
   );
   assert.equal(r.workouts.length, 1);
-  assert.equal(r.workouts[0].id, 'hc:io.strongapp.strong:strong');
+  assert.equal(r.workouts[0].id, 'hc:strong:1');
   assert.equal(r.workouts[0].durationMin, 55);
   assert.equal(r.workouts[0].kind, 'lift');
 });
@@ -191,4 +193,45 @@ test('recovery summary: averages only the days that have each measurement', () =
   ]);
   assert.deepEqual(s, { nights: 2, avgSleepMin: 450, avgHrvMs: 50, avgSteps: 8000 });
   assert.deepEqual(summarizeRecovery([]), { nights: 0, avgSleepMin: undefined, avgHrvMs: undefined, avgSteps: undefined });
+});
+
+test('walks: long but slow wandering is not a workout; a brisk walk is', () => {
+  const slow = buildActivityEvents([session({ startMin: 0, durMin: 122, distanceKm: 0.79 })], utcDate);
+  assert.equal(slow.workouts.length, 0);
+  assert.equal(slow.walks.length, 1);
+  const brisk = buildActivityEvents([session({ startMin: 0, durMin: 60, distanceKm: 5 })], utcDate);
+  assert.equal(brisk.workouts.length, 1);
+  const noDistance = buildActivityEvents([session({ startMin: 0, durMin: 60 })], utcDate);
+  assert.equal(noDistance.workouts.length, 1);
+});
+
+// Strong CSV times are local, so build them the way the importer reads them.
+const strongSession = (startedAt: string, durationMin: number) => ({
+  key: `${startedAt}|Push`,
+  date: startedAt.slice(0, 10),
+  startedAt,
+  name: 'Push',
+  durationMin,
+  sets: [{ exercise: 'Bench Press', weightKg: 80, reps: 5 }],
+});
+
+test('strong import: a CSV workout that Health Connect also recorded counts once and keeps its sets', () => {
+  const csv = strongToRaw(strongSession('2026-11-02 12:00:00', 60))!;
+  const hcStrong = { ...session({ startMin: 0, durMin: 58, typeName: 'STRENGTH_TRAINING', origin: 'io.strongapp.strong' }), startMs: csv.startMs + MIN, endMs: csv.startMs + 59 * MIN };
+  const hcFit = { ...session({ startMin: 0, durMin: 60, typeName: 'STRENGTH_TRAINING' }), startMs: csv.startMs, endMs: csv.endMs };
+  const r = buildActivityEvents([hcStrong, hcFit, csv], deviceLocalDate);
+  assert.equal(r.workouts.length, 1);
+  assert.equal(r.workouts[0].id, csv.id);
+  assert.equal(r.workouts[0].sets?.length, 1);
+  assert.equal(r.workouts[0].origins.length, 2);
+});
+
+test('strong import: importing the same file twice adds nothing', () => {
+  const once = strongToRaw(strongSession('2026-10-30 18:05:00', 50))!;
+  const r = buildActivityEvents([once, { ...once }], deviceLocalDate);
+  assert.equal(r.workouts.length, 1);
+});
+
+test('strong import: unreadable start times are skipped', () => {
+  assert.equal(strongToRaw(strongSession('not a date', 50)), null);
 });

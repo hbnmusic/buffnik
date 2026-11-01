@@ -3,9 +3,11 @@
  * so everything here is unit tested. healthConnect.ts reads the records and calls this.
  */
 import { CONFIG } from '../engine/config';
-import type { ActivityEvent, ActivityKind, BodyCompReading, DailyRecovery } from '../engine/types';
+import type { ActivityEvent, ActivityKind, BodyCompReading, DailyRecovery, StrengthSet } from '../engine/types';
+import type { StrongSession } from './strongCsv';
 
 export interface RawSession {
+  /** Full, stable id of the resulting event, e.g. 'hc:com.strava:abc' or 'strong:2026-10-30 18:05:00|Push'. */
   id: string;
   /** Package name of the app that wrote it. */
   origin: string;
@@ -14,6 +16,8 @@ export interface RawSession {
   startMs: number;
   endMs: number;
   distanceKm?: number;
+  /** Logged sets, when the source has them (Strong). */
+  sets?: StrengthSet[];
 }
 
 export type LocalDate = (ms: number) => string;
@@ -42,6 +46,7 @@ interface Working {
   startMs: number;
   endMs: number;
   distanceKm?: number;
+  sets?: StrengthSet[];
   origins: string[];
   primaryOrigin: string;
 }
@@ -84,7 +89,13 @@ function mergeWalks(items: Working[]): Working[] {
 
 /** Collapse the same non-walk session recorded by more than one app. */
 function dedupOverlapping(items: Working[]): Working[] {
-  const sorted = [...items].sort((a, b) => priority(a.primaryOrigin) - priority(b.primaryOrigin) || b.endMs - b.startMs - (a.endMs - a.startMs));
+  // Same app: the record that carries logged sets wins, then the longer one.
+  const sorted = [...items].sort(
+    (a, b) =>
+      priority(a.primaryOrigin) - priority(b.primaryOrigin) ||
+      Number(!!b.sets) - Number(!!a.sets) ||
+      b.endMs - b.startMs - (a.endMs - a.startMs),
+  );
   const kept: Working[] = [];
   for (const w of sorted) {
     const dup = kept.find((k) => {
@@ -96,6 +107,7 @@ function dedupOverlapping(items: Working[]): Working[] {
       dup.origins = union(dup.origins, w.origins);
       if (dup.kind === 'other' && w.kind !== 'other') dup.kind = w.kind;
       if (dup.distanceKm === undefined) dup.distanceKm = w.distanceKm;
+      if (!dup.sets && w.sets) dup.sets = w.sets;
     } else {
       kept.push({ ...w, origins: [...w.origins] });
     }
@@ -103,10 +115,17 @@ function dedupOverlapping(items: Working[]): Working[] {
   return kept;
 }
 
+/** A merged walk counts as a workout if it is long enough and brisk enough. Walks with no distance are judged on length alone. */
+function isWalkWorkout(e: ActivityEvent): boolean {
+  if (e.durationMin < CONFIG.ingest.walkWorkoutMinMinutes) return false;
+  if (e.distanceKm === undefined || CONFIG.ingest.walkWorkoutMinKmh <= 0) return true;
+  return e.distanceKm / (e.durationMin / 60) >= CONFIG.ingest.walkWorkoutMinKmh;
+}
+
 export interface SessionResult {
   /** Sessions that count toward the weekly target, XP and bosses. */
   workouts: ActivityEvent[];
-  /** Walks shorter than the workout threshold. They feed steps and recovery only. */
+  /** Walks that are too short or too slow to be workouts. They feed steps and recovery only. */
   walks: ActivityEvent[];
 }
 
@@ -115,17 +134,18 @@ export interface SessionResult {
  *  1. Same non-walk session from two apps counts once (higher-priority app wins).
  *  2. A walk that mostly overlaps another session is part of that session and is dropped.
  *  3. Walk fragments within the merge gap become one walk.
- *  4. A merged walk is a workout only if it is long enough.
+ *  4. A merged walk is a workout only if it is long enough and brisk enough.
  */
 export function buildActivityEvents(raw: RawSession[], localDate: LocalDate = deviceLocalDate): SessionResult {
   const items: Working[] = raw
     .filter((r) => r.endMs > r.startMs)
     .map((r) => ({
-      id: `hc:${r.origin}:${r.id}`,
+      id: r.id,
       kind: kindFromTypeName(r.typeName),
       startMs: r.startMs,
       endMs: r.endMs,
       distanceKm: r.distanceKm,
+      sets: r.sets,
       origins: [r.origin],
       primaryOrigin: r.origin,
     }));
@@ -143,6 +163,7 @@ export function buildActivityEvents(raw: RawSession[], localDate: LocalDate = de
     date: localDate(w.startMs),
     durationMin: Math.round((w.endMs - w.startMs) / MIN_MS),
     ...(w.distanceKm !== undefined ? { distanceKm: Math.round(w.distanceKm * 100) / 100 } : {}),
+    ...(w.sets ? { sets: w.sets } : {}),
     origins: w.origins,
   });
 
@@ -150,7 +171,7 @@ export function buildActivityEvents(raw: RawSession[], localDate: LocalDate = de
   const shortWalks: ActivityEvent[] = [];
   for (const w of [...all].sort((a, b) => a.startMs - b.startMs)) {
     const e = toEvent(w);
-    if (w.kind === 'walk' && e.durationMin < CONFIG.ingest.walkWorkoutMinMinutes) shortWalks.push(e);
+    if (w.kind === 'walk' && !isWalkWorkout(e)) shortWalks.push(e);
     else workouts.push(e);
   }
   return { workouts, walks: shortWalks };
@@ -248,5 +269,26 @@ export function summarizeRecovery(rows: DailyRecovery[]): RecoverySummary {
     avgSleepMin: avg(sleep),
     avgHrvMs: avg(rows.flatMap((r) => (r.hrvMs !== undefined ? [r.hrvMs] : []))),
     avgSteps: avg(rows.flatMap((r) => (r.steps !== undefined ? [r.steps] : []))),
+  };
+}
+
+/** Local time as exported by Strong ('2026-10-30 18:05:00') in the device's time zone. */
+function parseLocalTime(text: string): number {
+  const m = text.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return NaN;
+  return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0).getTime();
+}
+
+/** A Strong CSV workout as a raw session, so it de-duplicates against Health Connect like any other source. */
+export function strongToRaw(s: StrongSession): RawSession | null {
+  const startMs = parseLocalTime(s.startedAt);
+  if (Number.isNaN(startMs)) return null;
+  return {
+    id: `strong:${s.key}`,
+    origin: 'io.strongapp.strong',
+    typeName: 'STRENGTH_TRAINING',
+    startMs,
+    endMs: startMs + Math.max(s.durationMin, 1) * MIN_MS,
+    sets: s.sets,
   };
 }

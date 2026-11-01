@@ -140,8 +140,8 @@ function SnapshotCard({ snapshot }: { snapshot: HealthSnapshot }) {
       ))}
       {snapshot.workouts.length > shown.length && <Text style={styles.muted}>…and {snapshot.workouts.length - shown.length} earlier</Text>}
 
-      <Text style={styles.sectionLabel}>Short walks, not workouts: {snapshot.walks.length}</Text>
-      <Text style={styles.muted}>Walks under {CONFIG.ingest.walkWorkoutMinMinutes} minutes feed steps and recovery only.</Text>
+      <Text style={styles.sectionLabel}>Walks that are not workouts: {snapshot.walks.length}</Text>
+      <Text style={styles.muted}>A walk counts as a workout at {CONFIG.ingest.walkWorkoutMinMinutes}+ minutes and {CONFIG.ingest.walkWorkoutMinKmh}+ km/h. The rest feed steps and recovery only.</Text>
 
       <Text style={styles.sectionLabel}>Recovery</Text>
       <Text style={styles.line}>
