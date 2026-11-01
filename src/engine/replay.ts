@@ -8,7 +8,7 @@ import { CONFIG } from './config';
 import { addDays, monthKey, weekStart } from './dates';
 import { applySets, type PrBook } from './prs';
 import { rollBudget, type BudgetState, type ShopKind, type Wallet } from './economy';
-import { rollDrop, type LootDrop } from './loot';
+import { rollDrop, type LootDrop, type Rarity } from './loot';
 import {
   healDescent,
   healFiveBoros,
@@ -88,7 +88,7 @@ export interface GameState {
   weeks: WeekRecord[];
   prBook: PrBook;
   drops: DropRecord[];
-  looks: { date: string; rarity: string }[];
+  looks: { date: string; rarity: Rarity; eventId: string }[];
   wallet: Wallet;
   budget: BudgetState;
   fiveBoros: FiveBorosState;
@@ -154,7 +154,7 @@ export function replay(inputs: GameInputs): GameState {
   let budget: BudgetState = { month: monthKey(startDate), spentUsd: 0, vaultUsd: 0 };
   let vouchers: number[] = [];
   const drops: DropRecord[] = [];
-  const looks: { date: string; rarity: string }[] = [];
+  const looks: { date: string; rarity: Rarity; eventId: string }[] = [];
   const defeats: { date: string; boss: string }[] = [];
   const weeks: WeekRecord[] = [];
 
@@ -170,7 +170,7 @@ export function replay(inputs: GameInputs): GameState {
     const r = drop.reward;
     if (r.type === 'coins') week = { ...week, coins: week.coins + r.amount };
     else if (r.type === 'freeze') week = { ...week, freezes: Math.min(CONFIG.week.maxBankedFreezes, week.freezes + 1) };
-    else if (r.type === 'look') looks.push({ date, rarity: r.rarity });
+    else if (r.type === 'look') looks.push({ date, rarity: r.rarity, eventId });
     else vouchers = [...vouchers, r.usd];
   };
 

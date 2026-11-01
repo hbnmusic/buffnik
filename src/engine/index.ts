@@ -9,3 +9,4 @@ export * from './economy';
 export * from './loot';
 export * from './bosses';
 export * from './replay';
+export * from './wardrobe';
