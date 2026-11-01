@@ -10,6 +10,8 @@
  */
 import { unzipSync } from 'fflate';
 
+import { GEAR_SLOTS, type GearSlot } from '../engine/wardrobe';
+
 export const RARITIES = ['common', 'rare', 'epic', 'legendary'] as const;
 export type PackRarity = (typeof RARITIES)[number];
 
@@ -20,6 +22,10 @@ export interface PackLook {
   /** Path inside the pack folder. */
   image: string;
   tiers?: Record<string, string>;
+  /** A gear item worn in this slot (shown as an icon beside the character). Without it the look is a full-body outfit. */
+  slot?: GearSlot;
+  /** Owned from the start (for example the base character of a sheet). */
+  starter?: boolean;
 }
 
 export interface PackManifest {
@@ -66,6 +72,8 @@ export function validateManifest(raw: unknown): PackValidation {
       ids.add(id);
       if (typeof o.name !== 'string' || o.name.trim() === '') errors.push(`${where}: "name" is required.`);
       if (!RARITIES.includes(o.rarity as PackRarity)) errors.push(`${where}: "rarity" must be one of ${RARITIES.join(', ')}.`);
+      if (o.slot !== undefined && !GEAR_SLOTS.includes(o.slot as GearSlot)) errors.push(`${where}: "slot" must be one of ${GEAR_SLOTS.join(', ')}.`);
+      if (o.starter !== undefined && typeof o.starter !== 'boolean') errors.push(`${where}: "starter" must be true or false.`);
       const image = cleanPath(o.image);
       if (!image || !IMAGE_EXT.test(image)) errors.push(`${where}: "image" must be a png, jpg or webp path inside the pack.`);
       const tiers: Record<string, string> = {};
@@ -80,7 +88,15 @@ export function validateManifest(raw: unknown): PackValidation {
         }
       }
       if (errors.length === 0 && image) {
-        looks.push({ id, name: String(o.name).trim(), rarity: o.rarity as PackRarity, image, ...(Object.keys(tiers).length ? { tiers } : {}) });
+        looks.push({
+          id,
+          name: String(o.name).trim(),
+          rarity: o.rarity as PackRarity,
+          image,
+          ...(Object.keys(tiers).length ? { tiers } : {}),
+          ...(o.slot ? { slot: o.slot as GearSlot } : {}),
+          ...(o.starter ? { starter: true } : {}),
+        });
       }
     });
   }

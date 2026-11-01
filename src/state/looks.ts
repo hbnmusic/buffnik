@@ -1,5 +1,5 @@
 /** The look catalog (drawn starters plus imported art packs) and what the player owns. */
-import { STARTER_LOOKS, lookCoinPrice, ownedLookIds, resolveLooks, type Look, type LookEvent } from '../engine';
+import { STARTER_LOOKS, itemCoinPrice, lookCoinPrice, ownedLookIds, resolveLooks, type Look, type LookEvent } from '../engine';
 import type { Purchase } from '../engine';
 import type { PackManifest } from '../data/packs';
 import type { Store } from './store';
@@ -44,6 +44,8 @@ export function buildCatalog(packs: PackManifest[]): Look[] {
       secondary: '#3B4258',
       accent: '#C9CFDD',
       accessory: 'none' as const,
+      ...(l.slot ? { slot: l.slot } : {}),
+      ...(l.starter ? { starter: true } : {}),
       pack: { packId: p.id, image: l.image, ...(l.tiers ? { tiers: l.tiers } : {}) },
     })),
   );
@@ -59,4 +61,4 @@ export function lookEvents(drops: { date: string; rarity: LookEvent['rarity']; e
   ];
 }
 
-export { lookCoinPrice, ownedLookIds, resolveLooks };
+export { itemCoinPrice, lookCoinPrice, ownedLookIds, resolveLooks };

@@ -8,6 +8,10 @@ import type { Rarity } from './loot';
 import { hashSeed } from './replay';
 
 export type LookStyle = 'tee' | 'tank' | 'hoodie' | 'jersey' | 'jacket' | 'gi' | 'armor' | 'robe' | 'suit';
+/** Where a gear item is worn. A character wears at most one item per slot. */
+export const GEAR_SLOTS = ['head', 'face', 'body', 'hands', 'feet', 'back', 'weapon', 'accessory'] as const;
+export type GearSlot = (typeof GEAR_SLOTS)[number];
+
 export type Accessory = 'none' | 'headband' | 'glasses' | 'cape' | 'scarf';
 
 export interface Look {
@@ -20,7 +24,10 @@ export interface Look {
   secondary: string;
   accent: string;
   accessory: Accessory;
+  /** Owned from the start. */
   starter?: boolean;
+  /** Set for gear items (an icon worn in a slot). Looks without a slot are full outfits. */
+  slot?: GearSlot;
   /** Set for looks from an imported art pack: images replace the drawn figure. */
   pack?: { packId: string; image: string; tiers?: Record<string, string> };
 }
@@ -62,6 +69,11 @@ export const STARTER_LOOKS: Look[] = [
 
 export function lookCoinPrice(rarity: Rarity): number {
   return CONFIG.economy.lookCoinPrices[rarity];
+}
+
+/** Coin price of a catalog entry: gear is cheaper than a full outfit of the same rarity. */
+export function itemCoinPrice(item: Pick<Look, 'rarity' | 'slot'>): number {
+  return item.slot ? CONFIG.economy.gearCoinPrices[item.rarity] : CONFIG.economy.lookCoinPrices[item.rarity];
 }
 
 export interface LookEvent {

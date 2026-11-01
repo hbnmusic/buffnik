@@ -106,6 +106,8 @@ export const CONFIG = {
     vaultCapUsd: 1500,
     /** Coin price of a look in the shop, by rarity. PROPOSAL. */
     lookCoinPrices: { common: 200, rare: 600, epic: 1500, legendary: 4000 },
+    /** Coin price of a gear item (hat, weapon...) by rarity. PROPOSAL. */
+    gearCoinPrices: { common: 60, rare: 200, epic: 500, legendary: 1500 },
   },
 
   /** Loot. Weights are relative. */

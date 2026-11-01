@@ -24,7 +24,7 @@ import type { PackManifest } from '../data/packs';
 import { loadBook, repairLooks, saveBook, type CharacterBook } from './characters';
 import { fetchWishlist, type FetchLike } from '../data/steam';
 import { loadCatalog, loadSteamCache, saveSteamCache, steamItems, type SteamCache } from './catalog';
-import { buildCatalog, loadPacks, lookCoinPrice, lookEvents, lookItemId, resolveLooks } from './looks';
+import { buildCatalog, loadPacks, itemCoinPrice, lookEvents, lookItemId, resolveLooks } from './looks';
 import { loadSettings, type Settings } from './settings';
 import type { Look } from '../engine';
 import type { ScheduleContext } from './notifications';
@@ -279,7 +279,7 @@ export async function buyLook(store: Store, lookId: string, today = todayLocal()
   const look = loaded.lookCatalog.find((l) => l.id === lookId);
   if (!look) return { ok: false, reason: 'Unknown look.' };
   if (loaded.ownedLookIds.includes(lookId)) return { ok: false, reason: 'You already own this look.' };
-  const price = lookCoinPrice(look.rarity);
+  const price = itemCoinPrice(look);
   if (loaded.state.coins < price) return { ok: false, reason: 'Not enough coins.' };
   const purchase: Purchase = {
     id: `p-${Date.now()}`,
