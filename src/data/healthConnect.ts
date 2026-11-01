@@ -53,6 +53,12 @@ export async function connect(): Promise<string[]> {
   if (!ok) throw new Error('Health Connect could not be initialised.');
   // History lets Buffnik read past the default window, for Strong/PR baselines and weight averages.
   const granted = await requestPermission([...READ_PERMISSIONS, { accessType: 'read', recordType: 'ReadHealthDataHistory' }]);
+  // Reading while the app is closed lets unlock alerts arrive on their own. Optional: the app works without it.
+  try {
+    await requestPermission([{ accessType: 'read', recordType: 'BackgroundAccessPermission' }]);
+  } catch {
+    // Not supported on this Health Connect version.
+  }
   return granted.map((p) => p.recordType);
 }
 

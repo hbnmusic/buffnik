@@ -83,6 +83,7 @@ export default function Home() {
       <Btn label="Log your weight" onPress={() => router.push('/log-weight')} secondary />
       <Btn label="Import from Strong" onPress={() => router.push('/import-strong')} secondary />
       <Btn label="Data sources" onPress={() => router.push('/diagnostics')} secondary />
+      <Btn label="Settings" onPress={() => router.push('/settings')} secondary />
       <Text style={t.small}>Last synced: {loaded.lastSync ? new Date(loaded.lastSync).toLocaleString() : 'never'}</Text>
     </Screen>
   );

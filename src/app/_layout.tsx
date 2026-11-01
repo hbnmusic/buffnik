@@ -4,7 +4,11 @@ import { StatusBar } from 'expo-status-bar';
 import { ShareIntentProvider } from 'expo-share-intent';
 
 import { GameProvider } from '@/state/GameProvider';
+import '@/state/background';
+import { configureNotifications } from '@/state/notify';
 import { ShareHandler } from '@/state/ShareHandler';
+
+configureNotifications();
 
 export default function RootLayout() {
   return (
@@ -23,6 +27,7 @@ export default function RootLayout() {
         <Stack.Screen name="import-strong" options={{ title: 'Import from Strong' }} />
         <Stack.Screen name="log-workout" options={{ title: 'Log a workout' }} />
         <Stack.Screen name="log-weight" options={{ title: 'Log your weight' }} />
+        <Stack.Screen name="settings" options={{ title: 'Settings' }} />
         <Stack.Screen name="diagnostics" options={{ title: 'Data sources' }} />
       </Stack>
     </GameProvider>

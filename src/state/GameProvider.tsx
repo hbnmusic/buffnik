@@ -3,10 +3,13 @@ import { AppState } from 'react-native';
 
 import type { ActivityKind } from '../engine';
 import type { WeightUnit } from '../data/strongCsv';
+import { registerBackgroundSync } from './background';
+import { announceAndSchedule, runSyncCycle } from './cycle';
+import { requestNotificationPermission } from './notify';
 import { buy, importStrong, loadGame, logWeight, logWorkout, type BuyResult, type Loaded, type StrongImportSummary } from './service';
+import { saveSettings, type Settings } from './settings';
 import { openSqliteStore } from './sqliteStore';
 import type { Store } from './store';
-import { syncFromHealthConnect } from './sync';
 
 interface GameContextValue {
   loaded: Loaded | null;
@@ -22,6 +25,12 @@ interface GameContextValue {
   /** CSV text shared into the app from Strong, waiting for the import screen. */
   pendingShare: string | null;
   setPendingShare: (text: string | null) => void;
+  updateSettings: (settings: Settings) => Promise<void>;
+  /** Asks Android for notification permission; true if granted. */
+  enableNotifications: () => Promise<boolean>;
+  /** Reload from storage, for screens that changed it directly (backup restore, catalog edits). */
+  reload: () => Promise<void>;
+  store: () => Store;
 }
 
 const GameContext = createContext<GameContextValue | null>(null);
@@ -43,8 +52,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [pendingShare, setPendingShare] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (storeRef.current) setLoaded(await loadGame(storeRef.current));
+    if (!storeRef.current) return;
+    const l = await loadGame(storeRef.current);
+    setLoaded(l);
+    return l;
   }, []);
+
+  /** After a change the user made themselves: no unlock alerts, but reminders are rescheduled. */
+  const refreshQuietly = useCallback(async () => {
+    const l = await refresh();
+    if (l && storeRef.current) await announceAndSchedule(storeRef.current, l, false);
+  }, [refresh]);
 
   const sync = useCallback(
     async (askPermission = true) => {
@@ -52,14 +70,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (!store) return;
       setSyncing(true);
       try {
-        const outcome = await syncFromHealthConnect(store, askPermission);
+        const { outcome, loaded: l } = await runSyncCycle(store, askPermission);
         setSyncMessage(outcome.message);
-        await refresh();
+        setLoaded(l);
       } finally {
         setSyncing(false);
       }
     },
-    [refresh],
+    [],
   );
 
   // Open the database once, then sync quietly (no permission prompt) on start.
@@ -67,13 +85,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         storeRef.current = await openSqliteStore();
-        await refresh();
+        await refreshQuietly();
         await sync(false);
+        await registerBackgroundSync();
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
     })();
-  }, [refresh, sync]);
+  }, [refreshQuietly, sync]);
 
   // Sync again when the app returns to the foreground, at most every ten minutes.
   useEffect(() => {
@@ -101,21 +120,37 @@ export function GameProvider({ children }: { children: ReactNode }) {
     sync,
     importStrongCsv: async (text, unit) => {
       const summary = await withStore((s) => importStrong(s, text, unit));
-      await refresh();
+      await refreshQuietly();
       return summary;
     },
     addWorkout: async (w) => {
       await withStore((s) => logWorkout(s, w));
-      await refresh();
+      await refreshQuietly();
     },
     addWeight: async (date, lb, bf) => {
       await withStore((s) => logWeight(s, date, lb, bf));
-      await refresh();
+      await refreshQuietly();
     },
     purchase: async (itemId) => {
       const result = await withStore((s) => buy(s, itemId));
-      await refresh();
+      await refreshQuietly();
       return result;
+    },
+    updateSettings: async (settings) => {
+      await withStore((s) => saveSettings(s, settings));
+      await refreshQuietly();
+    },
+    enableNotifications: async () => {
+      const ok = await requestNotificationPermission();
+      await refreshQuietly();
+      return ok;
+    },
+    reload: async () => {
+      await refreshQuietly();
+    },
+    store: () => {
+      if (!storeRef.current) throw new Error('Still loading. Try again in a moment.');
+      return storeRef.current;
     },
   };
 

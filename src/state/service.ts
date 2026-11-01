@@ -21,6 +21,8 @@ import {
 } from '../engine';
 import { buildActivityEvents, deviceLocalDate, strongToRaw, type RawSession } from '../data/ingest';
 import { parseStrongCsv, type WeightUnit } from '../data/strongCsv';
+import { loadSettings, type Settings } from './settings';
+import type { ScheduleContext } from './notifications';
 import type { Store } from './store';
 
 export const todayLocal = () => deviceLocalDate(Date.now());
@@ -37,6 +39,9 @@ export interface Loaded {
   lastSync: string | null;
   /** Unit of the last Strong import, used by one-tap imports from the share sheet. */
   strongUnit: WeightUnit;
+  settings: Settings;
+  /** Days since a backup file was made, or null if never. */
+  daysSinceBackup: number | null;
 }
 
 /** The game starts on the day the app first runs; everything earlier is baseline only. */
@@ -49,13 +54,15 @@ export async function ensureStartDate(store: Store, today: string): Promise<stri
 
 export async function loadGame(store: Store, today = todayLocal()): Promise<Loaded> {
   const startDate = await ensureStartDate(store, today);
-  const [sessions, recovery, body, purchases, lastSync, strongUnit] = await Promise.all([
+  const [sessions, recovery, body, purchases, lastSync, strongUnit, settings, lastBackup] = await Promise.all([
     store.listSessions(),
     store.listRecovery(),
     store.listBody(),
     store.listPurchases(),
     store.getMeta('lastSync'),
     store.getMeta('strongUnit'),
+    loadSettings(store),
+    store.getMeta('lastBackup'),
   ]);
   const { workouts, walks } = buildActivityEvents(sessions);
   const inputs: GameInputs = { startDate, today, activities: workouts, recovery, body, purchases };
@@ -69,6 +76,23 @@ export async function loadGame(store: Store, today = todayLocal()): Promise<Load
     latestWeightLb: latest ? Math.round(latest.weightKg * LB_PER_KG * 10) / 10 : undefined,
     lastSync,
     strongUnit: strongUnit === 'kg' ? 'kg' : 'lb',
+    settings,
+    daysSinceBackup: lastBackup ? Math.floor((Date.now() - Date.parse(lastBackup)) / 86_400_000) : null,
+  };
+}
+
+/** Inputs for the notification planner. */
+export function scheduleContext(loaded: Loaded, now = new Date()): ScheduleContext {
+  const { state, today } = loaded;
+  return {
+    now,
+    today,
+    credited: state.thisWeek.credited,
+    required: state.thisWeek.required,
+    trainedToday: loaded.workouts.some((w) => w.date === today),
+    level: state.level.level,
+    coins: state.coins,
+    daysSinceBackup: loaded.daysSinceBackup,
   };
 }
 
