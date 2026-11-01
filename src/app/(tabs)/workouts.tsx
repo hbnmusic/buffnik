@@ -15,7 +15,7 @@ export default function Workouts() {
     <Card key={w.id}>
       <Row left={`${w.kind[0].toUpperCase()}${w.kind.slice(1)} · ${w.durationMin} min`} right={shortDate(w.date)} />
       <Text style={t.small}>
-        {[w.distanceKm ? `${w.distanceKm} km` : null, w.sets ? `${w.sets.length} sets` : null, w.manual ? 'logged by hand' : w.origins.map(originLabel).join(' + ')]
+        {[w.distanceKm ? `${w.distanceKm} km` : null, w.sets ? `${w.sets.length} sets` : null, w.zone3PlusMin ? `${w.zone3PlusMin} min hard` : null, w.manual ? 'logged by hand' : w.origins.map(originLabel).join(' + ')]
           .filter(Boolean)
           .join(' · ')}
       </Text>

@@ -1,7 +1,9 @@
 import { router } from 'expo-router';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
 import { CONFIG } from '@/engine';
+import { activeCharacter } from '@/state/characters';
+import { CharacterView } from '@/ui/CharacterView';
 import { useGame } from '@/state/GameProvider';
 import { describeDrop, shortDate, STAT_NAMES } from '@/ui/format';
 import { Bar, Btn, C, Card, Row, Screen, t } from '@/ui/theme';
@@ -26,14 +28,21 @@ export default function Home() {
 
   const { state, workouts } = loaded;
   const { level, thisWeek } = state;
+  const hero = activeCharacter(loaded.characters);
+  const heroLook = loaded.lookCatalog.find((l) => l.id === hero.lookId) ?? loaded.lookCatalog[0];
   const empty = workouts.length === 0 && state.totalXp === 0;
 
   return (
     <Screen>
       <Card>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <Text style={t.h1}>Level {level.level}</Text>
-          <Text style={[t.h2, { color: C.gold }]}>{state.coins.toLocaleString()} coins</Text>
+        <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
+          <Pressable onPress={() => router.push('/character')}>
+            <CharacterView character={hero} look={heroLook} tier={state.buildTier} width={92} />
+          </Pressable>
+          <View style={{ flex: 1, gap: 6 }}>
+            <Text style={t.h1}>Level {level.level}</Text>
+            <Text style={[t.h2, { color: C.gold }]}>{state.coins.toLocaleString()} coins</Text>
+          </View>
         </View>
         <Bar value={level.xpIntoLevel} max={level.xpForNext} />
         <Text style={t.muted}>
