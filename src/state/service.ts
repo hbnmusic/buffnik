@@ -217,7 +217,7 @@ export async function logWorkout(store: Store, w: ManualWorkout): Promise<void> 
   const startMs = localTime(w.date, 5 + (sameDay % 8) * 2);
   await store.upsertSessions('manual', [
     {
-      id: `manual:${Date.now()}:${sameDay}`,
+      id: `manual:${Date.now()}:${sameDay}:${Math.random().toString(36).slice(2, 6)}`,
       origin: 'com.buffnik.app',
       typeName: TYPE_FOR_KIND[w.kind],
       startMs,
@@ -258,7 +258,7 @@ export async function buy(store: Store, itemId: string, today = todayLocal()): P
   }
 
   const purchase: Purchase = {
-    id: `p-${Date.now()}`,
+    id: `p-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     date: today,
     itemId: item.id,
     name: item.name,
@@ -282,7 +282,7 @@ export async function buyLook(store: Store, lookId: string, today = todayLocal()
   const price = itemCoinPrice(look);
   if (loaded.state.coins < price) return { ok: false, reason: 'Not enough coins.' };
   const purchase: Purchase = {
-    id: `p-${Date.now()}`,
+    id: `p-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     date: today,
     itemId: lookItemId(lookId),
     name: look.name,
