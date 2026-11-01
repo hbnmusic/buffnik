@@ -156,6 +156,8 @@ export async function diagnose(days = 30, now = new Date()): Promise<TypeSummary
 export interface HealthSnapshot {
   from: string;
   to: string;
+  /** Raw sessions, for storing and for merging with other sources. */
+  sessions: RawSession[];
   workouts: ActivityEvent[];
   /** Short walks: they feed steps and recovery but are not workouts. */
   walks: ActivityEvent[];
@@ -266,6 +268,7 @@ export async function readHealthSnapshot(days = 30, now = new Date()): Promise<H
   return {
     from: startTime,
     to: endTime,
+    sessions,
     workouts,
     walks,
     recovery: buildDailyRecovery({ sleep, hrv, steps }),

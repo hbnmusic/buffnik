@@ -18,6 +18,8 @@ export interface RawSession {
   distanceKm?: number;
   /** Logged sets, when the source has them (Strong). */
   sets?: StrengthSet[];
+  /** Entered by hand in Buffnik: never filtered, always credited. */
+  manual?: boolean;
 }
 
 export type LocalDate = (ms: number) => string;
@@ -47,6 +49,7 @@ interface Working {
   endMs: number;
   distanceKm?: number;
   sets?: StrengthSet[];
+  manual?: boolean;
   origins: string[];
   primaryOrigin: string;
 }
@@ -68,8 +71,8 @@ function union(a: string[], b: string[]): string[] {
 
 /** Join walk fragments that touch or sit within the merge gap. */
 function mergeWalks(items: Working[]): Working[] {
-  const walks = items.filter((w) => w.kind === 'walk').sort((a, b) => a.startMs - b.startMs);
-  const others = items.filter((w) => w.kind !== 'walk');
+  const walks = items.filter((w) => w.kind === 'walk' && !w.manual).sort((a, b) => a.startMs - b.startMs);
+  const others = items.filter((w) => w.kind !== 'walk' || w.manual);
   const gapMs = CONFIG.ingest.walkMergeGapMinutes * MIN_MS;
   const merged: Working[] = [];
   for (const w of walks) {
@@ -146,12 +149,13 @@ export function buildActivityEvents(raw: RawSession[], localDate: LocalDate = de
       endMs: r.endMs,
       distanceKm: r.distanceKm,
       sets: r.sets,
+      manual: r.manual,
       origins: [r.origin],
       primaryOrigin: r.origin,
     }));
 
-  const nonWalks = dedupOverlapping(items.filter((i) => i.kind !== 'walk'));
-  const walks = items.filter((i) => i.kind === 'walk').filter((w) => {
+  const nonWalks = dedupOverlapping(items.filter((i) => i.kind !== 'walk' || i.manual));
+  const walks = items.filter((i) => i.kind === 'walk' && !i.manual).filter((w) => {
     const dur = w.endMs - w.startMs;
     return !nonWalks.some((n) => overlapMs(n, w) >= CONFIG.ingest.overlapFraction * dur);
   });
@@ -164,6 +168,7 @@ export function buildActivityEvents(raw: RawSession[], localDate: LocalDate = de
     durationMin: Math.round((w.endMs - w.startMs) / MIN_MS),
     ...(w.distanceKm !== undefined ? { distanceKm: Math.round(w.distanceKm * 100) / 100 } : {}),
     ...(w.sets ? { sets: w.sets } : {}),
+    ...(w.manual ? { manual: true } : {}),
     origins: w.origins,
   });
 
@@ -171,7 +176,7 @@ export function buildActivityEvents(raw: RawSession[], localDate: LocalDate = de
   const shortWalks: ActivityEvent[] = [];
   for (const w of [...all].sort((a, b) => a.startMs - b.startMs)) {
     const e = toEvent(w);
-    if (w.kind === 'walk' && !isWalkWorkout(e)) shortWalks.push(e);
+    if (w.kind === 'walk' && !w.manual && !isWalkWorkout(e)) shortWalks.push(e);
     else workouts.push(e);
   }
   return { workouts, walks: shortWalks };

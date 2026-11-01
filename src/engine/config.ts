@@ -46,6 +46,7 @@ export const CONFIG = {
     overlapFraction: 0.5,
     /** When two apps recorded the same session, the app earlier in this list wins. */
     originPriority: [
+      'com.buffnik.app',
       'io.strongapp.strong',
       'com.strava',
       'com.ultrahuman.android',
