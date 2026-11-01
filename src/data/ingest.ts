@@ -20,6 +20,46 @@ export interface RawSession {
   sets?: StrengthSet[];
   /** Entered by hand in Buffnik: never filtered, always credited. */
   manual?: boolean;
+  /** Minutes spent in each heart-rate bucket (key = bucket lower bound in bpm). Kept raw so max HR can change later. */
+  hrHist?: Record<string, number>;
+}
+
+export interface HrSample {
+  timeMs: number;
+  bpm: number;
+}
+
+/** Minutes per heart-rate bucket within [startMs, endMs]. Each sample lasts until the next one, up to a cap. */
+export function hrHistogram(samples: HrSample[], startMs: number, endMs: number): Record<string, number> | undefined {
+  const inRange = samples.filter((s) => s.timeMs >= startMs && s.timeMs <= endMs && s.bpm > 0).sort((a, b) => a.timeMs - b.timeMs);
+  if (inRange.length === 0) return undefined;
+  const width = CONFIG.ingest.hrBucketBpm;
+  const capMs = CONFIG.ingest.hrSampleMaxSeconds * 1000;
+  const hist: Record<string, number> = {};
+  inRange.forEach((s, i) => {
+    const next = i + 1 < inRange.length ? inRange[i + 1].timeMs : endMs;
+    const minutes = Math.min(Math.max(next - s.timeMs, 0), capMs) / MIN_MS;
+    const key = String(Math.floor(s.bpm / width) * width);
+    hist[key] = Math.round(((hist[key] ?? 0) + minutes) * 1000) / 1000;
+  });
+  return hist;
+}
+
+/** Minutes at or above the hard-effort threshold. A bucket counts if its midpoint is at or above it. */
+export function zoneMinutes(hist: Record<string, number> | undefined, maxHr: number): number | undefined {
+  if (!hist) return undefined;
+  const threshold = maxHr * CONFIG.ingest.zoneThresholdFraction;
+  const half = CONFIG.ingest.hrBucketBpm / 2;
+  let total = 0;
+  for (const [bpm, min] of Object.entries(hist)) if (Number(bpm) + half >= threshold) total += min;
+  return Math.round(total);
+}
+
+function addHist(a?: Record<string, number>, b?: Record<string, number>): Record<string, number> | undefined {
+  if (!a || !b) return a ?? b;
+  const out = { ...a };
+  for (const [k, v] of Object.entries(b)) out[k] = (out[k] ?? 0) + v;
+  return out;
 }
 
 export type LocalDate = (ms: number) => string;
@@ -50,6 +90,7 @@ interface Working {
   distanceKm?: number;
   sets?: StrengthSet[];
   manual?: boolean;
+  hrHist?: Record<string, number>;
   origins: string[];
   primaryOrigin: string;
 }
@@ -81,6 +122,8 @@ function mergeWalks(items: Working[]): Working[] {
       // Overlapping fragments from two different apps describe the same steps, so their distance is not summed.
       const sameSteps = w.startMs < last.endMs && !w.origins.every((o) => last.origins.includes(o));
       if (!sameSteps && w.distanceKm !== undefined) last.distanceKm = (last.distanceKm ?? 0) + w.distanceKm;
+      if (!sameSteps) last.hrHist = addHist(last.hrHist, w.hrHist);
+      else last.hrHist = last.hrHist ?? w.hrHist;
       last.endMs = Math.max(last.endMs, w.endMs);
       last.origins = union(last.origins, w.origins);
     } else {
@@ -111,6 +154,7 @@ function dedupOverlapping(items: Working[]): Working[] {
       if (dup.kind === 'other' && w.kind !== 'other') dup.kind = w.kind;
       if (dup.distanceKm === undefined) dup.distanceKm = w.distanceKm;
       if (!dup.sets && w.sets) dup.sets = w.sets;
+      if (!dup.hrHist && w.hrHist) dup.hrHist = w.hrHist;
     } else {
       kept.push({ ...w, origins: [...w.origins] });
     }
@@ -139,7 +183,7 @@ export interface SessionResult {
  *  3. Walk fragments within the merge gap become one walk.
  *  4. A merged walk is a workout only if it is long enough and brisk enough.
  */
-export function buildActivityEvents(raw: RawSession[], localDate: LocalDate = deviceLocalDate): SessionResult {
+export function buildActivityEvents(raw: RawSession[], localDate: LocalDate = deviceLocalDate, maxHr = 185): SessionResult {
   const items: Working[] = raw
     .filter((r) => r.endMs > r.startMs)
     .map((r) => ({
@@ -150,6 +194,7 @@ export function buildActivityEvents(raw: RawSession[], localDate: LocalDate = de
       distanceKm: r.distanceKm,
       sets: r.sets,
       manual: r.manual,
+      hrHist: r.hrHist,
       origins: [r.origin],
       primaryOrigin: r.origin,
     }));
@@ -161,16 +206,21 @@ export function buildActivityEvents(raw: RawSession[], localDate: LocalDate = de
   });
   const all = mergeWalks([...nonWalks, ...walks]);
 
-  const toEvent = (w: Working): ActivityEvent => ({
-    id: w.id,
-    kind: w.kind,
-    date: localDate(w.startMs),
-    durationMin: Math.round((w.endMs - w.startMs) / MIN_MS),
-    ...(w.distanceKm !== undefined ? { distanceKm: Math.round(w.distanceKm * 100) / 100 } : {}),
-    ...(w.sets ? { sets: w.sets } : {}),
-    ...(w.manual ? { manual: true } : {}),
-    origins: w.origins,
-  });
+  const toEvent = (w: Working): ActivityEvent => {
+    const durationMin = Math.round((w.endMs - w.startMs) / MIN_MS);
+    const zone = zoneMinutes(w.hrHist, maxHr);
+    return {
+      id: w.id,
+      kind: w.kind,
+      date: localDate(w.startMs),
+      durationMin,
+      ...(w.distanceKm !== undefined ? { distanceKm: Math.round(w.distanceKm * 100) / 100 } : {}),
+      ...(w.sets ? { sets: w.sets } : {}),
+      ...(w.manual ? { manual: true } : {}),
+      ...(zone !== undefined ? { zone3PlusMin: Math.min(zone, durationMin) } : {}),
+      origins: w.origins,
+      };
+  };
 
   const workouts: ActivityEvent[] = [];
   const shortWalks: ActivityEvent[] = [];

@@ -18,7 +18,7 @@ import {
 } from 'react-native-health-connect';
 
 import type { ActivityEvent, BodyCompReading, DailyRecovery } from '../engine/types';
-import { buildActivityEvents, buildBodyComp, buildDailyRecovery, type RawSession, type RawSleep } from './ingest';
+import { buildActivityEvents, buildBodyComp, buildDailyRecovery, hrHistogram, type HrSample, type RawSession, type RawSleep } from './ingest';
 import { invertConstants, originLabel, summarizeOrigins, type OriginCount } from './originSummary';
 
 /** Record types Buffnik reads, in the order the diagnostics screen shows them. */
@@ -182,6 +182,17 @@ async function distanceKm(startTime: string, endTime: string): Promise<number | 
   }
 }
 
+/** Heart-rate samples recorded during a session, or undefined if none or unreadable. */
+async function heartRateSamples(startTime: string, endTime: string): Promise<HrSample[] | undefined> {
+  try {
+    const { records } = await readAll('HeartRate', startTime, endTime, 3);
+    const samples = records.flatMap((r) => (r.samples ?? []).map((x) => ({ timeMs: Date.parse(x.time), bpm: x.beatsPerMinute })));
+    return samples.length > 0 ? samples : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Read the last `days` days of Health Connect data and turn it into what the game counts. */
 export async function readHealthSnapshot(days = 30, now = new Date()): Promise<HealthSnapshot> {
   await initialize();
@@ -213,6 +224,12 @@ export async function readHealthSnapshot(days = 30, now = new Date()): Promise<H
         const batch = records.slice(i, i + 10);
         const dists = await Promise.all(batch.map((r) => distanceKm(r.startTime, r.endTime)));
         dists.forEach((d, j) => (raw[i + j].distanceKm = d));
+        // Heart rate is only worth reading for sessions that could be workouts (not short walk fragments).
+        const hrs = await Promise.all(batch.map((r, j) => (raw[i + j].typeName === 'WALKING' && raw[i + j].endMs - raw[i + j].startMs < 20 * 60_000 ? undefined : heartRateSamples(r.startTime, r.endTime))));
+        hrs.forEach((samples, j) => {
+          const h = samples ? hrHistogram(samples, raw[i + j].startMs, raw[i + j].endMs) : undefined;
+          if (h) raw[i + j].hrHist = h;
+        });
       }
       return raw;
     },

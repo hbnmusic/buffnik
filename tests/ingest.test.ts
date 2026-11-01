@@ -235,3 +235,58 @@ test('strong import: importing the same file twice adds nothing', () => {
 test('strong import: unreadable start times are skipped', () => {
   assert.equal(strongToRaw(strongSession('not a date', 50)), null);
 });
+
+import { hrHistogram, zoneMinutes } from '../src/data/ingest';
+
+test('heart rate: samples become a histogram and hard-effort minutes follow max HR', () => {
+  const samples = [
+    { timeMs: T0, bpm: 110 }, // 5 min to the next sample
+    { timeMs: T0 + 5 * MIN, bpm: 150 }, // 10 min
+    { timeMs: T0 + 15 * MIN, bpm: 168 }, // 15 min
+  ];
+  const hist = hrHistogram(samples, T0, T0 + 30 * MIN)!;
+  // Each sample lasts until the next, but no longer than two minutes.
+  assert.equal(hist['110'], 2);
+  assert.equal(hist['150'], 2);
+  assert.equal(hist['165'], 2);
+  assert.equal(hrHistogram([], T0, T0 + MIN), undefined);
+  assert.equal(hrHistogram([{ timeMs: T0 - 5 * MIN, bpm: 100 }], T0, T0 + MIN), undefined);
+
+  const dense = Array.from({ length: 40 }, (_, i) => ({ timeMs: T0 + i * MIN, bpm: i < 20 ? 120 : 160 }));
+  const dh = hrHistogram(dense, T0, T0 + 40 * MIN)!;
+  assert.equal(zoneMinutes(dh, 185), 20); // 70% of 185 = 129.5: the 160 bucket counts, the 120 bucket does not
+  assert.equal(zoneMinutes(dh, 220), 20); // 154: still counts
+  assert.equal(zoneMinutes(dh, 250), 0); // 175
+  assert.equal(zoneMinutes(undefined, 185), undefined);
+});
+
+test('heart rate: zone minutes reach the event, survive dedup, and are capped by duration', () => {
+  const hist = { '150': 30, '120': 20 };
+  const r = buildActivityEvents(
+    [
+      { ...session({ startMin: 0, durMin: 50, typeName: 'RUNNING', origin: 'com.strava' }), hrHist: hist },
+      session({ startMin: 0, durMin: 50, typeName: 'RUNNING', origin: 'com.google.android.apps.fitness' }),
+    ],
+    utcDate,
+    185,
+  );
+  assert.equal(r.workouts.length, 1);
+  assert.equal(r.workouts[0].zone3PlusMin, 30);
+
+  // A duplicate with no heart rate takes it from the other copy, even when the higher-priority copy has none.
+  const swapped = buildActivityEvents(
+    [
+      session({ startMin: 0, durMin: 50, typeName: 'STRENGTH_TRAINING', origin: 'io.strongapp.strong' }),
+      { ...session({ startMin: 0, durMin: 50, typeName: 'STRENGTH_TRAINING', origin: 'com.ultrahuman.android' }), hrHist: { '150': 25 } },
+    ],
+    utcDate,
+    185,
+  );
+  assert.equal(swapped.workouts[0].zone3PlusMin, 25);
+
+  // Lower max HR means more of the session is hard effort; the result never exceeds the session length.
+  const low = buildActivityEvents([{ ...session({ startMin: 0, durMin: 20, typeName: 'RUNNING' }), hrHist: { '150': 30 } }], utcDate, 185);
+  assert.equal(low.workouts[0].zone3PlusMin, 20);
+  const none = buildActivityEvents([session({ startMin: 0, durMin: 30, typeName: 'RUNNING' })], utcDate, 185);
+  assert.equal(none.workouts[0].zone3PlusMin, undefined);
+});

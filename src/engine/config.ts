@@ -53,6 +53,11 @@ export const CONFIG = {
       'com.fitbit.FitbitMobile',
       'com.google.android.apps.fitness',
     ],
+    /** Heart rate at or above this fraction of max HR counts as hard effort (intensity XP). */
+    zoneThresholdFraction: 0.7,
+    /** Width of a heart-rate histogram bucket (bpm), and the longest a single sample is assumed to last. */
+    hrBucketBpm: 5,
+    hrSampleMaxSeconds: 120,
     /** Health Connect sleep stages that do not count as sleep: awake, out of bed. */
     sleepExcludedStages: [1, 3],
   },

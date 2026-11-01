@@ -83,7 +83,7 @@ export async function loadGame(store: Store, today = todayLocal()): Promise<Load
     loadCatalog(store),
     loadSteamCache(store),
   ]);
-  const { workouts, walks } = buildActivityEvents(sessions);
+  const { workouts, walks } = buildActivityEvents(sessions, deviceLocalDate, settings.maxHr);
   const inputs: GameInputs = { startDate, today, activities: workouts, recovery, body, purchases };
   const latest = body[body.length - 1];
   const state = replay(inputs);
