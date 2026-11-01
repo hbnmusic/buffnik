@@ -5,7 +5,6 @@
 import {
   CONFIG,
   LB_PER_KG,
-  SEED_CATALOG,
   addDays,
   checkRedeem,
   redeem,
@@ -21,7 +20,13 @@ import {
 } from '../engine';
 import { buildActivityEvents, deviceLocalDate, strongToRaw, type RawSession } from '../data/ingest';
 import { parseStrongCsv, type WeightUnit } from '../data/strongCsv';
+import type { PackManifest } from '../data/packs';
+import { loadBook, repairLooks, saveBook, type CharacterBook } from './characters';
+import { fetchWishlist, type FetchLike } from '../data/steam';
+import { loadCatalog, loadSteamCache, saveSteamCache, steamItems, type SteamCache } from './catalog';
+import { buildCatalog, loadPacks, lookCoinPrice, lookEvents, lookItemId, ownedLookIds } from './looks';
 import { loadSettings, type Settings } from './settings';
+import type { Look } from '../engine';
 import type { ScheduleContext } from './notifications';
 import type { Store } from './store';
 
@@ -42,6 +47,16 @@ export interface Loaded {
   settings: Settings;
   /** Days since a backup file was made, or null if never. */
   daysSinceBackup: number | null;
+  /** Every look in the game (drawn starters and art packs), the ids owned, and the imported packs. */
+  lookCatalog: Look[];
+  ownedLookIds: string[];
+  packs: PackManifest[];
+  characters: CharacterBook;
+  /** Everything buyable with money-backed or utility items: the editable catalog plus the cached Steam wishlist. */
+  shopItems: ShopItem[];
+  /** The editable treats (without Steam games). */
+  catalog: ShopItem[];
+  steam: SteamCache | null;
 }
 
 /** The game starts on the day the app first runs; everything earlier is baseline only. */
@@ -54,7 +69,7 @@ export async function ensureStartDate(store: Store, today: string): Promise<stri
 
 export async function loadGame(store: Store, today = todayLocal()): Promise<Loaded> {
   const startDate = await ensureStartDate(store, today);
-  const [sessions, recovery, body, purchases, lastSync, strongUnit, settings, lastBackup] = await Promise.all([
+  const [sessions, recovery, body, purchases, lastSync, strongUnit, settings, lastBackup, packs, book, catalog, steam] = await Promise.all([
     store.listSessions(),
     store.listRecovery(),
     store.listBody(),
@@ -63,14 +78,21 @@ export async function loadGame(store: Store, today = todayLocal()): Promise<Load
     store.getMeta('strongUnit'),
     loadSettings(store),
     store.getMeta('lastBackup'),
+    loadPacks(store),
+    loadBook(store),
+    loadCatalog(store),
+    loadSteamCache(store),
   ]);
   const { workouts, walks } = buildActivityEvents(sessions);
   const inputs: GameInputs = { startDate, today, activities: workouts, recovery, body, purchases };
   const latest = body[body.length - 1];
+  const state = replay(inputs);
+  const lookCatalog = buildCatalog(packs);
+  const owned = ownedLookIds(lookCatalog, lookEvents(state.looks, purchases));
   return {
     startDate,
     today,
-    state: replay(inputs),
+    state,
     workouts: [...workouts].reverse(),
     walks: [...walks].reverse(),
     latestWeightLb: latest ? Math.round(latest.weightKg * LB_PER_KG * 10) / 10 : undefined,
@@ -78,6 +100,13 @@ export async function loadGame(store: Store, today = todayLocal()): Promise<Load
     strongUnit: strongUnit === 'kg' ? 'kg' : 'lb',
     settings,
     daysSinceBackup: lastBackup ? Math.floor((Date.now() - Date.parse(lastBackup)) / 86_400_000) : null,
+    lookCatalog,
+    ownedLookIds: owned,
+    packs,
+    characters: repairLooks(book, owned),
+    catalog,
+    steam,
+    shopItems: [...catalog, ...steamItems(steam?.games ?? [])],
   };
 }
 
@@ -200,15 +229,12 @@ export async function logWeight(store: Store, date: string, weightLb: number, bo
 
 export type BuyResult = { ok: true; purchase: Purchase } | { ok: false; reason: string };
 
-export function catalog(): ShopItem[] {
-  return SEED_CATALOG;
-}
-
 export async function buy(store: Store, itemId: string, today = todayLocal()): Promise<BuyResult> {
-  const item = catalog().find((i) => i.id === itemId);
+  const loaded = await loadGame(store, today);
+  const item = loaded.shopItems.find((i) => i.id === itemId);
   if (!item) return { ok: false, reason: 'Unknown item.' };
 
-  const { state } = await loadGame(store, today);
+  const { state } = loaded;
   if (item.id === 'freeze' && state.freezes >= CONFIG.week.maxBankedFreezes) {
     return { ok: false, reason: `You already hold the maximum of ${CONFIG.week.maxBankedFreezes} freezes.` };
   }
@@ -237,4 +263,42 @@ export async function buy(store: Store, itemId: string, today = todayLocal()): P
   };
   await store.addPurchase(purchase);
   return { ok: true, purchase };
+}
+
+/** Buy a look from the wardrobe shop with coins. */
+export async function buyLook(store: Store, lookId: string, today = todayLocal()): Promise<BuyResult> {
+  const loaded = await loadGame(store, today);
+  const look = loaded.lookCatalog.find((l) => l.id === lookId);
+  if (!look) return { ok: false, reason: 'Unknown look.' };
+  if (loaded.ownedLookIds.includes(lookId)) return { ok: false, reason: 'You already own this look.' };
+  const price = lookCoinPrice(look.rarity);
+  if (loaded.state.coins < price) return { ok: false, reason: 'Not enough coins.' };
+  const purchase: Purchase = {
+    id: `p-${Date.now()}`,
+    date: today,
+    itemId: lookItemId(lookId),
+    name: look.name,
+    kind: 'cosmetic',
+    coinCost: price,
+    usdFromMonth: 0,
+    usdFromVault: 0,
+  };
+  await store.addPurchase(purchase);
+  return { ok: true, purchase };
+}
+
+export async function saveCharacters(store: Store, book: CharacterBook): Promise<void> {
+  await saveBook(store, book);
+}
+
+/** Re-read the Steam wishlist and cache it. Never throws: problems are stored and shown in the shop. */
+export async function refreshSteam(store: Store, f: FetchLike, now = Date.now()): Promise<SteamCache> {
+  const settings = await loadSettings(store);
+  const result = await fetchWishlist(settings.steamId, f);
+  const previous = await loadSteamCache(store);
+  // A failed refresh keeps the last good list.
+  const keep = result.games.length === 0 && previous ? previous.games : result.games;
+  const cache: SteamCache = { fetchedAt: new Date(now).toISOString(), games: keep, problem: result.problem, unpriced: result.unpriced };
+  await saveSteamCache(store, cache);
+  return cache;
 }

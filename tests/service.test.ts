@@ -118,3 +118,29 @@ test('service: re-importing in the other unit corrects the sets instead of dupli
   assert.equal(g.workouts.filter((w) => w.date === '2026-11-03').length, 1);
   assert.equal(g.workouts.find((w) => w.date === '2026-11-03')!.sets![0].weightKg, 135); // read as kg this time
 });
+
+test('looks: buying a look costs coins once and adds it to the wardrobe', async () => {
+  const { buyLook, loadGame } = await import('../src/state/service');
+  const store = createMemoryStore();
+  const today = '2026-11-10';
+  // Not enough coins at the start.
+  const poor = await buyLook(store, 'dojo-gi', today);
+  assert.equal(poor.ok, false);
+  const before = await loadGame(store, today);
+  assert.equal(before.ownedLookIds.includes('dojo-gi'), false);
+  assert.ok(before.ownedLookIds.includes('gym-tee'));
+
+  // Earn coins with a manual week of workouts, then buy.
+  const { logWorkout } = await import('../src/state/service');
+  for (const d of ['2026-11-10', '2026-11-10', '2026-11-10']) await logWorkout(store, { kind: 'run', date: d, durationMin: 120, distanceKm: 20 });
+  const rich = await loadGame(store, today);
+  assert.ok(rich.state.coins >= 600, `coins ${rich.state.coins}`);
+  {
+    const r = await buyLook(store, 'dojo-gi', today);
+    assert.equal(r.ok, true);
+    const after = await loadGame(store, today);
+    assert.ok(after.ownedLookIds.includes('dojo-gi'));
+    assert.equal(after.state.coins, rich.state.coins - 600);
+    assert.equal((await buyLook(store, 'dojo-gi', today)).ok, false);
+  }
+});

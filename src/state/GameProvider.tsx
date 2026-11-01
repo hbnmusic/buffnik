@@ -6,7 +6,12 @@ import type { WeightUnit } from '../data/strongCsv';
 import { registerBackgroundSync } from './background';
 import { announceAndSchedule, runSyncCycle } from './cycle';
 import { requestNotificationPermission } from './notify';
-import { buy, importStrong, loadGame, logWeight, logWorkout, type BuyResult, type Loaded, type StrongImportSummary } from './service';
+import { buy, buyLook, importStrong, loadGame, logWeight, logWorkout, saveCharacters, refreshSteam, type BuyResult, type Loaded, type StrongImportSummary } from './service';
+import { installPackFromZip, deletePackFiles } from '../data/packFiles';
+import { addPack, removePack } from './looks';
+import type { CharacterBook } from './characters';
+import { saveCatalog } from './catalog';
+import type { ShopItem } from '../engine';
 import { saveSettings, type Settings } from './settings';
 import { openSqliteStore } from './sqliteStore';
 import type { Store } from './store';
@@ -22,6 +27,13 @@ interface GameContextValue {
   addWorkout: (w: { kind: ActivityKind; date: string; durationMin: number; distanceKm?: number }) => Promise<void>;
   addWeight: (date: string, weightLb: number, bodyFatPct?: number) => Promise<void>;
   purchase: (itemId: string) => Promise<BuyResult>;
+  purchaseLook: (lookId: string) => Promise<BuyResult>;
+  saveCharacterBook: (book: CharacterBook) => Promise<void>;
+  /** Install an art pack from a zip file; returns the pack name. */
+  importPack: (zipUri: string) => Promise<string>;
+  deletePack: (packId: string) => Promise<void>;
+  saveShopCatalog: (items: ShopItem[]) => Promise<void>;
+  refreshSteamWishlist: () => Promise<void>;
   /** CSV text shared into the app from Strong, waiting for the import screen. */
   pendingShare: string | null;
   setPendingShare: (text: string | null) => void;
@@ -135,6 +147,34 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const result = await withStore((s) => buy(s, itemId));
       await refreshQuietly();
       return result;
+    },
+    purchaseLook: async (lookId) => {
+      const result = await withStore((s) => buyLook(s, lookId));
+      await refreshQuietly();
+      return result;
+    },
+    saveCharacterBook: async (book) => {
+      await withStore((s) => saveCharacters(s, book));
+      await refresh();
+    },
+    importPack: async (zipUri) => {
+      const manifest = await installPackFromZip(zipUri);
+      await withStore((s) => addPack(s, manifest));
+      await refresh();
+      return manifest.name;
+    },
+    deletePack: async (packId) => {
+      await withStore((s) => removePack(s, packId));
+      deletePackFiles(packId);
+      await refresh();
+    },
+    saveShopCatalog: async (items) => {
+      await withStore((s) => saveCatalog(s, items));
+      await refresh();
+    },
+    refreshSteamWishlist: async () => {
+      await withStore((s) => refreshSteam(s, (url) => fetch(url)));
+      await refresh();
     },
     updateSettings: async (settings) => {
       await withStore((s) => saveSettings(s, settings));
