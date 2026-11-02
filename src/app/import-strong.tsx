@@ -6,7 +6,8 @@ import { Text, View } from 'react-native';
 import type { WeightUnit } from '@/data/strongCsv';
 import type { StrongImportSummary } from '@/state/service';
 import { useGame } from '@/state/GameProvider';
-import { Btn, Card, Chip, Row, Screen, t } from '@/ui/theme';
+import { CONFIG } from '@/engine';
+import { Btn, C, Card, Chip, Row, Screen, t } from '@/ui/theme';
 
 export default function ImportStrong() {
   const { loaded, importStrongCsv, pendingShare, setPendingShare } = useGame();
@@ -76,8 +77,20 @@ export default function ImportStrong() {
           <Row left="Also recorded by Health Connect (counted once)" right={String(summary.result.matchedHealthConnect)} />
           <Row left="Before the game started (records only)" right={String(summary.result.beforeStart)} />
           {summary.result.skippedRows > 0 && <Row left="Rows skipped" right={String(summary.result.skippedRows)} />}
-          <Text style={t.small}>Weights were read as {summary.unit === 'lb' ? 'pounds' : 'kilograms'}.</Text>
-          <Btn label={`Weights were in ${other === 'lb' ? 'pounds' : 'kilograms'}? Re-import`} onPress={() => lastText.current && run(lastText.current, other)} secondary disabled={busy} />
+          {summary.result.countedBySets > 0 && <Row left="Counted by their sets (Strong's timer was short)" right={String(summary.result.countedBySets)} />}
+          {summary.result.tooShort > 0 && <Row left="Too short to count" right={String(summary.result.tooShort)} rightColor={C.gold} />}
+          {summary.result.tooShort > 0 && (
+            <Text style={t.small}>
+              {summary.result.withoutDuration > 0 ? 'The file has no readable duration for some of these. ' : ''}
+              A workout counts when it lasts 20 minutes or more, or has at least {CONFIG.ingest.strongMinWorkingSets} working sets. Open the Workouts tab, tap one, and enter how long it really took.
+            </Text>
+          )}
+          <Text style={t.small}>
+            Weights were read as {summary.result.weightUnit === 'lb' ? 'pounds' : 'kilograms'}{summary.result.unitFromFile ? ', as the file says' : ''}.
+          </Text>
+          {!summary.result.unitFromFile && (
+            <Btn label={`Weights were in ${other === 'lb' ? 'pounds' : 'kilograms'}? Re-import`} onPress={() => lastText.current && run(lastText.current, other)} secondary disabled={busy} />
+          )}
         </Card>
       )}
 

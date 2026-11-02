@@ -144,3 +144,46 @@ test('looks: buying a look costs coins once and adds it to the wardrobe', async 
     assert.equal((await buyLook(store, 'dojo-gi', today)).ok, false);
   }
 });
+
+const setRows = (n: number, duration: string) =>
+  Array.from({ length: n }, (_, i) => `2026-11-03 21:00:00,Chest,${duration},Bench Press,${i + 1},135,8,0,0,,,`).join('\n');
+const strongCsv = (n: number, duration: string) => `Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,Notes,Workout Notes,RPE\n${setRows(n, duration)}\n`;
+
+test('service: a Strong workout logged after the fact (timer of 5 minutes) counts by its sets', async () => {
+  const store = createMemoryStore();
+  await loadGame(store, '2026-11-01');
+  const summary = await importStrong(store, strongCsv(8, '5m'), 'lb', TODAY);
+  assert.equal(summary.countedBySets, 1);
+  assert.equal(summary.tooShort, 0);
+  const g = await loadGame(store, TODAY);
+  assert.equal(g.state.thisWeek.credited, 1);
+  assert.ok(g.state.totalXp > 0);
+  assert.equal(g.workouts[0].estimated, true);
+});
+
+test('service: a short workout with few sets is reported, and counts once its length is set by hand', async () => {
+  const store = createMemoryStore();
+  await loadGame(store, '2026-11-01');
+  const summary = await importStrong(store, strongCsv(3, '5m'), 'lb', TODAY);
+  assert.equal(summary.countedBySets, 0);
+  assert.equal(summary.tooShort, 1);
+  let g = await loadGame(store, TODAY);
+  assert.equal(g.state.thisWeek.credited, 0);
+
+  const { setWorkoutDuration } = await import('../src/state/service');
+  await setWorkoutDuration(store, g.workouts[0].id, 40);
+  g = await loadGame(store, TODAY);
+  assert.equal(g.state.thisWeek.credited, 1);
+  assert.equal(g.workouts[0].durationMin, 40);
+  assert.equal(g.workouts[0].edited, true);
+
+  // Importing the same file again keeps the length that was set by hand.
+  await importStrong(store, strongCsv(3, '5m'), 'lb', TODAY);
+  g = await loadGame(store, TODAY);
+  assert.equal(g.state.thisWeek.credited, 1);
+
+  await setWorkoutDuration(store, g.workouts[0].id, null);
+  g = await loadGame(store, TODAY);
+  assert.equal(g.state.thisWeek.credited, 0);
+  await assert.rejects(() => setWorkoutDuration(store, g.workouts[0].id, 0), /how long/);
+});

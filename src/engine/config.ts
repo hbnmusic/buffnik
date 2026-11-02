@@ -44,6 +44,13 @@ export const CONFIG = {
     walkMergeGapMinutes: 10,
     /** Two sessions overlapping by this fraction of the shorter one are the same session. */
     overlapFraction: 0.5,
+    /**
+     * A Strong session whose timer ran short (the sets were logged after the workout) still counts when it has at
+     * least this many working sets. Its length is then estimated at strongMinutesPerSet per working set, and never
+     * below the credit minimum. [proposal]
+     */
+    strongMinWorkingSets: 6,
+    strongMinutesPerSet: 3,
     /** When two apps recorded the same session, the app earlier in this list wins. */
     originPriority: [
       'com.buffnik.app',

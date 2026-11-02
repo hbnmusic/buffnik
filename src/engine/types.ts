@@ -21,6 +21,10 @@ export interface ActivityEvent {
   rpe?: number;
   sets?: StrengthSet[];
   manual?: boolean;
+  /** The length was estimated from the logged sets because the app's own timer ran short. */
+  estimated?: boolean;
+  /** The length was set by hand on the Workouts tab. */
+  edited?: boolean;
   origins: string[];
 }
 

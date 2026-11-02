@@ -51,3 +51,34 @@ test('strong csv: recognises a Strong export from its header', async () => {
   assert.equal(looksLikeStrongCsv('hello there'), false);
   assert.equal(looksLikeStrongCsv(''), false);
 });
+
+test('strong csv: newer exports put the unit in the header (Duration (sec), Weight (kg))', () => {
+  const csv = [
+    '"Workout #";"Date";"Workout Name";"Duration (sec)";"Exercise Name";"Set Order";"Weight (kg)";"Reps";"RPE";"Distance (meters)";"Seconds";"Notes";"Workout Notes"',
+    '"1";"2026-11-01 21:00:00";"Chest";"300";"Bench Press (Barbell)";"1";"100.0";"10";"";"";"";"";""',
+    '"1";"2026-11-01 21:00:00";"Chest";"300";"Bench Press (Barbell)";"2";"100.0";"8";"";"";"";"";""',
+  ].join('\n');
+  const r = parseStrongCsv(csv, 'lb'); // the caller's choice is overridden by the header
+  assert.equal(r.unit, 'kg');
+  assert.equal(r.unitFromFile, true);
+  assert.equal(r.sessions.length, 1);
+  assert.equal(r.sessions[0].durationMin, 5);
+  assert.equal(r.sessions[0].sets[0].weightKg, 100);
+  assert.equal(r.withoutDuration, 0);
+});
+
+test('strong csv: a file with no usable duration is reported', () => {
+  const none = 'Date,Workout Name,Exercise Name,Set Order,Weight,Reps\n2026-11-01 21:00:00,Push,Bench,1,135,8';
+  const r = parseStrongCsv(none, 'lb');
+  assert.equal(r.unitFromFile, false);
+  assert.equal(r.unit, 'lb');
+  assert.equal(r.withoutDuration, 1);
+});
+
+test('strong csv: bare numbers and clock durations', () => {
+  assert.equal(parseDurationMin('300', 'sec'), 5);
+  assert.equal(parseDurationMin('45', 'min'), 45);
+  assert.equal(parseDurationMin('45'), 45); // no hint: small numbers are minutes
+  assert.equal(parseDurationMin('2700'), 45); // no hint: large numbers are seconds
+  assert.equal(parseDurationMin('1:05:00'), 65);
+});

@@ -99,7 +99,8 @@ export default function Shop() {
   return (
     <Screen>
       <Card title="Your treat budget">
-        <Row left="Left this month" right={`${usd(budgetRemainingUsd(state.budget))} of ${usd(CONFIG.economy.monthlyBudgetUsd)}`} rightColor={C.good} />
+        <Row left="Unlocked this month" right={`${usd(state.budget.spentUsd)} of ${usd(CONFIG.economy.monthlyBudgetUsd)}`} rightColor={C.good} />
+        <Text style={t.small}>{usd(budgetRemainingUsd(state.budget))} still available to unlock this month.</Text>
         <Row left="Vault" right={`${usd(state.budget.vaultUsd)} (cap ${usd(CONFIG.economy.vaultCapUsd)})`} />
         <Row left="Coins" right={state.coins.toLocaleString()} rightColor={C.gold} />
         {state.wallet.vouchersUsd.length > 0 && <Row left="Vouchers" right={state.wallet.vouchersUsd.map(usd).join(', ')} />}

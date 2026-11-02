@@ -18,7 +18,7 @@ import {
   type Purchase,
   type ShopItem,
 } from '../engine';
-import { buildActivityEvents, deviceLocalDate, strongToRaw, type RawSession } from '../data/ingest';
+import { applyDurationOverrides, buildActivityEvents, deviceLocalDate, strongToRaw, type DurationOverrides, type RawSession } from '../data/ingest';
 import { parseStrongCsv, type WeightUnit } from '../data/strongCsv';
 import type { PackManifest } from '../data/packs';
 import { addCharacter, loadBook, MAX_CHARACTERS, repairLooks, saveBook, updateCharacter, type CharacterBook } from './characters';
@@ -67,6 +67,28 @@ export async function ensureStartDate(store: Store, today: string): Promise<stri
   return today;
 }
 
+async function loadDurationOverrides(store: Store): Promise<DurationOverrides> {
+  const raw = await store.getMeta('durationOverrides');
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const out: DurationOverrides = {};
+    for (const [id, v] of Object.entries(parsed)) if (typeof v === 'number' && v > 0 && v <= 1440) out[id] = v;
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** Set a workout's real length by hand (minutes), or pass null to go back to what the source recorded. */
+export async function setWorkoutDuration(store: Store, workoutId: string, minutes: number | null): Promise<void> {
+  if (minutes !== null && !(minutes > 0 && minutes <= 1440)) throw new Error('Enter how long it lasted, in minutes.');
+  const overrides = await loadDurationOverrides(store);
+  if (minutes === null) delete overrides[workoutId];
+  else overrides[workoutId] = Math.round(minutes);
+  await store.setMeta('durationOverrides', JSON.stringify(overrides));
+}
+
 export async function loadGame(store: Store, today = todayLocal()): Promise<Loaded> {
   const startDate = await ensureStartDate(store, today);
   const [sessions, recovery, body, purchases, lastSync, strongUnit, settings, lastBackup, packs, book, catalog, steam] = await Promise.all([
@@ -83,7 +105,9 @@ export async function loadGame(store: Store, today = todayLocal()): Promise<Load
     loadCatalog(store),
     loadSteamCache(store),
   ]);
-  const { workouts, walks } = buildActivityEvents(sessions, deviceLocalDate, settings.maxHr);
+  const built = buildActivityEvents(sessions, deviceLocalDate, settings.maxHr);
+  const workouts = applyDurationOverrides(built.workouts, await loadDurationOverrides(store));
+  const walks = built.walks;
   const inputs: GameInputs = { startDate, today, activities: workouts, recovery, body, purchases };
   const latest = body[body.length - 1];
   const state = replay(inputs);
@@ -161,11 +185,20 @@ export interface StrongImportSummary {
   /** Workouts dated before the game started: they set PR baselines but earn no XP. */
   beforeStart: number;
   skippedRows: number;
+  /** The unit weights were read in, and whether the file's own header said so. */
+  weightUnit: WeightUnit;
+  unitFromFile: boolean;
+  /** Workouts whose Strong timer was under the credit minimum but that count because of their sets. */
+  countedBySets: number;
+  /** Workouts still under the credit minimum: they are listed but earn nothing until their length is set by hand. */
+  tooShort: number;
+  /** Workouts with no readable duration in the file. */
+  withoutDuration: number;
 }
 
 export async function importStrong(store: Store, csvText: string, unit: WeightUnit, today = todayLocal()): Promise<StrongImportSummary> {
   const parsed = parseStrongCsv(csvText, unit);
-  await store.setMeta('strongUnit', unit);
+  await store.setMeta('strongUnit', parsed.unit);
   const raws = parsed.sessions.flatMap((s) => {
     const r = strongToRaw(s);
     return r ? [r] : [];
@@ -176,6 +209,8 @@ export async function importStrong(store: Store, csvText: string, unit: WeightUn
   const startDate = await ensureStartDate(store, today);
   const { workouts } = buildActivityEvents(await store.listSessions());
   const importedIds = new Set(raws.map((r) => r.id));
+  const overrides = await loadDurationOverrides(store);
+  const inGame = raws.filter((r) => deviceLocalDate(r.startMs) >= startDate);
   const matched = workouts.filter((w) => importedIds.has(w.id) && w.origins.some((o) => o !== 'io.strongapp.strong')).length;
 
   return {
@@ -185,6 +220,11 @@ export async function importStrong(store: Store, csvText: string, unit: WeightUn
     matchedHealthConnect: matched,
     beforeStart: parsed.sessions.filter((s) => s.date < startDate).length,
     skippedRows: parsed.skippedRows,
+    weightUnit: parsed.unit,
+    unitFromFile: parsed.unitFromFile,
+    countedBySets: inGame.filter((r) => r.estimated).length,
+    tooShort: inGame.filter((r) => !overrides[r.id] && (r.endMs - r.startMs) / 60_000 < CONFIG.minCreditedMinutes).length,
+    withoutDuration: parsed.withoutDuration,
   };
 }
 

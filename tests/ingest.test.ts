@@ -290,3 +290,24 @@ test('heart rate: zone minutes reach the event, survive dedup, and are capped by
   const none = buildActivityEvents([session({ startMin: 0, durMin: 30, typeName: 'RUNNING' })], utcDate, 185);
   assert.equal(none.workouts[0].zone3PlusMin, undefined);
 });
+
+test('ingest: a Strong session with a short timer but enough working sets counts, with its length estimated', async () => {
+  const { strongToRaw } = await import('../src/data/ingest');
+  const set = (warmup = false) => ({ exercise: 'Squat', weightKg: 100, reps: 5, warmup });
+  const session = (durationMin: number, sets: ReturnType<typeof set>[]) => ({ key: 'k', date: '2026-11-01', startedAt: '2026-11-01 21:00:00', name: 'Legs', durationMin, sets });
+  const minutes = (r: ReturnType<typeof strongToRaw>) => Math.round((r!.endMs - r!.startMs) / 60_000);
+
+  const six = strongToRaw(session(5, Array.from({ length: 6 }, () => set())));
+  assert.equal(six!.estimated, true);
+  assert.equal(minutes(six), 20); // never below the credit minimum
+  const twelve = strongToRaw(session(5, Array.from({ length: 12 }, () => set())));
+  assert.equal(minutes(twelve), 36);
+  // Warm-up sets do not count toward the minimum.
+  const warm = strongToRaw(session(5, [...Array.from({ length: 4 }, () => set()), ...Array.from({ length: 4 }, () => set(true))]));
+  assert.equal(warm!.estimated, undefined);
+  assert.equal(minutes(warm), 5);
+  // A real timer of 20 minutes or more is left alone.
+  const real = strongToRaw(session(50, Array.from({ length: 12 }, () => set())));
+  assert.equal(real!.estimated, undefined);
+  assert.equal(minutes(real), 50);
+});

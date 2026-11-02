@@ -6,7 +6,7 @@ import type { WeightUnit } from '../data/strongCsv';
 import { registerBackgroundSync } from './background';
 import { announceAndSchedule, runSyncCycle } from './cycle';
 import { requestNotificationPermission } from './notify';
-import { buy, buyLook, importStrong, loadGame, logWeight, logWorkout, saveCharacters, refreshSteam, adoptSheetPack, type BuyResult, type Loaded, type StrongImportSummary } from './service';
+import { buy, buyLook, importStrong, loadGame, logWeight, logWorkout, saveCharacters, refreshSteam, adoptSheetPack, setWorkoutDuration, type BuyResult, type Loaded, type StrongImportSummary } from './service';
 import { installPackFromZip, deletePackFiles, writePackFiles } from '../data/packFiles';
 import type { SheetPlan } from '../data/sheet/plan';
 import { addPack, removePack } from './looks';
@@ -28,6 +28,8 @@ interface GameContextValue {
   importStrongCsv: (text: string, unit: WeightUnit) => Promise<StrongImportSummary>;
   addWorkout: (w: { kind: ActivityKind; date: string; durationMin: number; distanceKm?: number }) => Promise<void>;
   addWeight: (date: string, weightLb: number, bodyFatPct?: number) => Promise<void>;
+  /** Set a workout's real length in minutes, or null to go back to what the source recorded. */
+  setWorkoutLength: (workoutId: string, minutes: number | null) => Promise<void>;
   purchase: (itemId: string) => Promise<BuyResult>;
   purchaseLook: (lookId: string) => Promise<BuyResult>;
   saveCharacterBook: (book: CharacterBook) => Promise<void>;
@@ -151,6 +153,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     },
     addWorkout: async (w) => {
       await withStore((s) => logWorkout(s, w));
+      await refreshQuietly();
+    },
+    setWorkoutLength: async (workoutId, minutes) => {
+      await withStore((s) => setWorkoutDuration(s, workoutId, minutes));
       await refreshQuietly();
     },
     addWeight: async (date, lb, bf) => {

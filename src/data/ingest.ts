@@ -20,6 +20,8 @@ export interface RawSession {
   sets?: StrengthSet[];
   /** Entered by hand in Buffnik: never filtered, always credited. */
   manual?: boolean;
+  /** The end time was estimated from the logged sets because the source's timer ran short. */
+  estimated?: boolean;
   /** Minutes spent in each heart-rate bucket (key = bucket lower bound in bpm). Kept raw so max HR can change later. */
   hrHist?: Record<string, number>;
 }
@@ -90,6 +92,7 @@ interface Working {
   distanceKm?: number;
   sets?: StrengthSet[];
   manual?: boolean;
+  estimated?: boolean;
   hrHist?: Record<string, number>;
   origins: string[];
   primaryOrigin: string;
@@ -194,6 +197,7 @@ export function buildActivityEvents(raw: RawSession[], localDate: LocalDate = de
       distanceKm: r.distanceKm,
       sets: r.sets,
       manual: r.manual,
+      estimated: r.estimated,
       hrHist: r.hrHist,
       origins: [r.origin],
       primaryOrigin: r.origin,
@@ -217,6 +221,7 @@ export function buildActivityEvents(raw: RawSession[], localDate: LocalDate = de
       ...(w.distanceKm !== undefined ? { distanceKm: Math.round(w.distanceKm * 100) / 100 } : {}),
       ...(w.sets ? { sets: w.sets } : {}),
       ...(w.manual ? { manual: true } : {}),
+      ...(w.estimated ? { estimated: true } : {}),
       ...(zone !== undefined ? { zone3PlusMin: Math.min(zone, durationMin) } : {}),
       origins: w.origins,
       };
@@ -334,16 +339,36 @@ function parseLocalTime(text: string): number {
   return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0).getTime();
 }
 
-/** A Strong CSV workout as a raw session, so it de-duplicates against Health Connect like any other source. */
+/**
+ * A Strong CSV workout as a raw session, so it de-duplicates against Health Connect like any other source.
+ * Strong times the app session, not the workout: sets logged afterwards give a timer of a few minutes. A session
+ * with enough working sets therefore counts anyway, with its length estimated from the sets.
+ */
 export function strongToRaw(s: StrongSession): RawSession | null {
   const startMs = parseLocalTime(s.startedAt);
   if (Number.isNaN(startMs)) return null;
+  const working = s.sets.filter((x) => !x.warmup).length;
+  const estimated = s.durationMin < CONFIG.minCreditedMinutes && working >= CONFIG.ingest.strongMinWorkingSets;
+  const minutes = estimated ? Math.max(CONFIG.minCreditedMinutes, Math.ceil(working * CONFIG.ingest.strongMinutesPerSet)) : Math.max(s.durationMin, 1);
   return {
     id: `strong:${s.key}`,
     origin: 'io.strongapp.strong',
     typeName: 'STRENGTH_TRAINING',
     startMs,
-    endMs: startMs + Math.max(s.durationMin, 1) * MIN_MS,
+    endMs: startMs + minutes * MIN_MS,
     sets: s.sets,
+    ...(estimated ? { estimated: true } : {}),
   };
+}
+
+/** Lengths set by hand, by workout id. A set length replaces whatever the source recorded or estimated. */
+export type DurationOverrides = Record<string, number>;
+
+export function applyDurationOverrides(workouts: ActivityEvent[], overrides: DurationOverrides): ActivityEvent[] {
+  return workouts.map((w) => {
+    const minutes = overrides[w.id];
+    if (minutes === undefined || !(minutes > 0)) return w;
+    const { estimated: _estimated, ...rest } = w;
+    return { ...rest, durationMin: minutes, edited: true, ...(w.zone3PlusMin !== undefined ? { zone3PlusMin: Math.min(w.zone3PlusMin, minutes) } : {}) };
+  });
 }

@@ -4,8 +4,9 @@
  *
  * Expected columns (order may vary): Date, Workout Name, Duration,
  * Exercise Name, Set Order, Weight, Reps, Distance, Seconds, Notes,
- * Workout Notes, RPE. The delimiter (comma or semicolon) is detected from
- * the header row.
+ * Workout Notes, RPE. Newer exports put the unit in the header, for example
+ * "Duration (sec)" and "Weight (kg)"; both spellings are accepted. The
+ * delimiter (comma or semicolon) is detected from the header row.
  */
 import { LB_PER_KG } from '../engine/config';
 import type { StrengthSet } from '../engine/types';
@@ -71,10 +72,19 @@ export function parseCsv(text: string, delimiter: ',' | ';'): string[][] {
   return rows;
 }
 
-/** Durations look like '1h 5m', '45m', '1h', or '50s'. */
-export function parseDurationMin(raw: string): number {
+/** How a bare number in the Duration column is read. Newer exports say "Duration (sec)" in the header. */
+export type DurationNumberUnit = 'min' | 'sec' | 'auto';
+
+/**
+ * Durations look like '1h 5m', '45m', '1h', '50s' or '1:05:00'. A bare number is read as minutes or
+ * seconds as the header says; with no hint, numbers above 600 are seconds [inference: no one trains for
+ * more than ten hours, and Strong has exported seconds].
+ */
+export function parseDurationMin(raw: string, numberUnit: DurationNumberUnit = 'auto'): number {
   const s = raw.trim().toLowerCase();
   if (s === '') return 0;
+  const clock = s.match(/^(\d+):(\d{2}):(\d{2})$/);
+  if (clock) return Math.round((+clock[1] * 60 + +clock[2] + +clock[3] / 60) * 10) / 10;
   let minutes = 0;
   const h = s.match(/(\d+(?:\.\d+)?)\s*h/);
   const m = s.match(/(\d+(?:\.\d+)?)\s*m(?!s)/);
@@ -82,7 +92,10 @@ export function parseDurationMin(raw: string): number {
   if (h) minutes += parseFloat(h[1]) * 60;
   if (m) minutes += parseFloat(m[1]);
   if (sec) minutes += parseFloat(sec[1]) / 60;
-  if (!h && !m && !sec && /^\d+(\.\d+)?$/.test(s)) minutes = parseFloat(s);
+  if (!h && !m && !sec && /^\d+(\.\d+)?$/.test(s)) {
+    const n = parseFloat(s);
+    minutes = numberUnit === 'sec' || (numberUnit === 'auto' && n > 600) ? n / 60 : n;
+  }
   return Math.round(minutes * 10) / 10;
 }
 
@@ -95,15 +108,22 @@ function num(raw: string | undefined): number {
 export interface ParseResult {
   sessions: StrongSession[];
   skippedRows: number;
+  /** The unit used to read weights: the file's own, when its header names one, otherwise the one passed in. */
+  unit: WeightUnit;
+  /** True when the header said kg or lb, so the caller's choice was not used. */
+  unitFromFile: boolean;
+  /** Sessions with no readable duration (no Duration column, or empty values). */
+  withoutDuration: number;
 }
 
 export function parseStrongCsv(text: string, unit: WeightUnit): ParseResult {
   const firstLine = text.replace(/^﻿/, '').split(/\r?\n/, 1)[0] ?? '';
   const rows = parseCsv(text, detectDelimiter(firstLine));
-  if (rows.length === 0) return { sessions: [], skippedRows: 0 };
+  if (rows.length === 0) return { sessions: [], skippedRows: 0, unit, unitFromFile: false, withoutDuration: 0 };
 
   const header = rows[0].map((h) => h.trim().toLowerCase());
-  const col = (name: string) => header.indexOf(name);
+  // A column matches by its name, with or without a unit in brackets: "weight" and "weight (kg)".
+  const col = (name: string) => header.findIndex((h) => h === name || h.startsWith(`${name} (`) || h.startsWith(`${name}(`));
   const iDate = col('date');
   const iName = col('workout name');
   const iDur = col('duration');
@@ -115,7 +135,13 @@ export function parseStrongCsv(text: string, unit: WeightUnit): ParseResult {
     throw new Error('This does not look like a Strong export (missing Date, Exercise Name or Reps columns).');
   }
 
-  const toKg = unit === 'lb' ? 1 / LB_PER_KG : 1;
+  const durHeader = iDur === -1 ? '' : header[iDur];
+  const durationUnit: DurationNumberUnit = /\(\s*sec|\(\s*s\s*\)/.test(durHeader) ? 'sec' : /\(\s*min/.test(durHeader) ? 'min' : 'auto';
+  const weightHeader = iWeight === -1 ? '' : header[iWeight];
+  const unitInFile: WeightUnit | null = /\(\s*kg/.test(weightHeader) ? 'kg' : /\(\s*lbs?\s*\)/.test(weightHeader) ? 'lb' : null;
+  const effectiveUnit = unitInFile ?? unit;
+
+  const toKg = effectiveUnit === 'lb' ? 1 / LB_PER_KG : 1;
   const byKey = new Map<string, StrongSession>();
   let skipped = 0;
 
@@ -130,7 +156,7 @@ export function parseStrongCsv(text: string, unit: WeightUnit): ParseResult {
     const key = `${startedAt}|${name}`;
     let session = byKey.get(key);
     if (!session) {
-      session = { key, date, startedAt, name, durationMin: iDur === -1 ? 0 : parseDurationMin(r[iDur] ?? ''), sets: [] };
+      session = { key, date, startedAt, name, durationMin: iDur === -1 ? 0 : parseDurationMin(r[iDur] ?? '', durationUnit), sets: [] };
       byKey.set(key, session);
     }
 
@@ -147,7 +173,7 @@ export function parseStrongCsv(text: string, unit: WeightUnit): ParseResult {
   }
 
   const sessions = [...byKey.values()].sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-  return { sessions, skippedRows: skipped };
+  return { sessions, skippedRows: skipped, unit: effectiveUnit, unitFromFile: unitInFile !== null, withoutDuration: sessions.filter((x) => x.durationMin <= 0).length };
 }
 
 /** Quick check that shared text or a file is a Strong export, before importing. */
