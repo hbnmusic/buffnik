@@ -1,5 +1,8 @@
 # Changelog
 
+## Build 12
+- **Sheet import: fewer merged pieces.** A faint glow or halo around an item no longer joins it to its neighbours. "Split more" now cuts at the pixel level and separates items that sit close together, instead of still joining anything within about 10 pixels. Pieces inside another piece's outline are only folded into it when they are much smaller.
+
 ## Build 11
 
 ### Strong imports

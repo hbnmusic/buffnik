@@ -14,7 +14,7 @@ const SENSITIVITY = [
   { label: 'Loose', tolerance: 60 },
 ];
 const MERGE = [
-  { label: 'Split more', gap: 0.003 },
+  { label: 'Split more', gap: 0 },
   { label: 'Normal', gap: DEFAULT_SLICE.mergeGap },
   { label: 'Merge more', gap: 0.02 },
 ];

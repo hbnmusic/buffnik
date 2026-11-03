@@ -3,8 +3,9 @@
  * background) into separate transparent pieces. Pure functions on RGBA pixels.
  *
  *  1. The background colour is the median colour of the image border.
- *  2. Foreground = pixels far enough from it. A coarse grid of cells that hold any foreground is grown a
- *     little, so parts of one item that sit close together join, and connected cells form pieces.
+ *  2. Foreground = pixels far enough from it. A coarse grid of cells that hold solid foreground (clearly
+ *     different from the background, so a faint glow around an item does not count) is grown a little, so
+ *     parts of one item that sit close together join, and connected cells form pieces.
  *  3. Tall pieces (close to the tallest in height) are the character and its outfits; the rest are items,
  *     numbered in reading order (rows top to bottom, left to right within a row).
  *  4. Each piece is cut out with a soft edge: background-coloured pixels become transparent.
@@ -111,20 +112,28 @@ export function sliceSheet(img: Rgba, partial: Partial<SliceOptions> = {}): Slic
   const sat = Math.max(...bg) - Math.min(...bg);
   if (sat < 40) warnings.push('The background is white, black or grey. Items of a similar colour can turn see-through. A saturated flat colour such as magenta works best.');
 
-  // Coarse grid: a cell is "on" if any pixel in it is foreground.
+  // Coarse grid: a cell is "on" if any pixel in it is solid foreground. Faint foreground (a glow or soft
+  // halo, only a little different from the background) does not make a cell "on", so a halo cannot join
+  // two items that stand apart; the faint pixels next to a piece still join that piece afterwards.
+  const solid = Math.max(opt.tolerance * 2.2, 90);
   const cell = Math.max(2, Math.round(w / 420));
   const cw = Math.ceil(w / cell);
   const ch = Math.ceil(h / cell);
   const on = new Uint8Array(cw * ch);
   const cellPixels = new Uint32Array(cw * ch);
+  const faint = new Uint8Array(cw * ch);
   for (let y = 0; y < h; y++) {
     const cy = Math.floor(y / cell);
     for (let x = 0; x < w; x++) {
-      if (isForeground(data, (y * w + x) * 4, bg, opt.tolerance)) {
-        const c = cy * cw + Math.floor(x / cell);
+      const i = (y * w + x) * 4;
+      if (data[i + 3] <= 127) continue;
+      const d = dist(data, i, bg);
+      if (d <= opt.tolerance) continue;
+      const c = cy * cw + Math.floor(x / cell);
+      if (d > solid) {
         on[c] = 1;
         cellPixels[c]++;
-      }
+      } else faint[c] = 1;
     }
   }
 
@@ -193,12 +202,34 @@ export function sliceSheet(img: Rgba, partial: Partial<SliceOptions> = {}): Slic
     comps.push(c);
   }
 
+  // Cells with only faint foreground join the piece beside them (one cell out), so soft edges stay with their piece.
+  for (let cy = 0; cy < ch; cy++) {
+    for (let cx = 0; cx < cw; cx++) {
+      const ci = cy * cw + cx;
+      if (!faint[ci] || labels[ci] !== -1) continue;
+      let found = -1;
+      for (let dy = -1; dy <= 1 && found === -1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = cx + dx;
+          const ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= cw || ny >= ch) continue;
+          if (grown[ny * cw + nx] && labels[ny * cw + nx] !== -1) {
+            found = labels[ny * cw + nx];
+            break;
+          }
+        }
+      }
+      if (found !== -1) labels[ci] = found;
+    }
+  }
+
   // Tight pixel boxes: each foreground pixel belongs to the component of its cell.
   for (let y = 0; y < h; y++) {
     const cy = Math.floor(y / cell);
     for (let x = 0; x < w; x++) {
       if (!isForeground(data, (y * w + x) * 4, bg, opt.tolerance)) continue;
       const lab = labels[cy * cw + Math.floor(x / cell)];
+      if (lab === -1) continue; // faint halo that belongs to no piece
       const c = comps[lab];
       c.pixels++;
       if (x < c.x0) c.x0 = x;
@@ -214,7 +245,7 @@ export function sliceSheet(img: Rgba, partial: Partial<SliceOptions> = {}): Slic
   let alive = comps.filter((c) => c.pixels >= minPixels && Math.max(c.x1 - c.x0 + 1, c.y1 - c.y0 + 1) >= minSide);
   const remap = new Map<number, number>();
   for (const small of [...alive].sort((a, b) => a.pixels - b.pixels)) {
-    const host = alive.find((b) => b !== small && b.x0 <= small.x0 && b.y0 <= small.y0 && b.x1 >= small.x1 && b.y1 >= small.y1 && b.pixels >= small.pixels);
+    const host = alive.find((b) => b !== small && b.x0 <= small.x0 && b.y0 <= small.y0 && b.x1 >= small.x1 && b.y1 >= small.y1 && b.pixels >= small.pixels * 4);
     if (host) {
       host.x0 = Math.min(host.x0, small.x0);
       host.pixels += small.pixels;

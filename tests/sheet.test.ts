@@ -178,3 +178,39 @@ test('sheet: pieces are scaled down to the size limit, keeping transparency', ()
   assert.deepEqual(Array.from(small.data.slice(0, 3)), [200, 50, 50]);
   assert.equal(downscale(big, 1000), big);
 });
+
+/** A flat magenta sheet with filled rectangles, each optionally wrapped in a soft pink glow. */
+function glowSheet(boxes: { x: number; y: number; w: number; h: number; glow?: number }[], width = 1000, height = 500) {
+  const data = new Uint8Array(width * height * 4);
+  for (let i = 0; i < width * height; i++) data.set([255, 0, 255, 255], i * 4);
+  const put = (x: number, y: number, c: number[]) => {
+    if (x >= 0 && y >= 0 && x < width && y < height) data.set([c[0], c[1], c[2], 255], (y * width + x) * 4);
+  };
+  for (const b of boxes) {
+    const g = b.glow ?? 0;
+    for (let y = b.y - g; y < b.y + b.h + g; y++) for (let x = b.x - g; x < b.x + b.w + g; x++) put(x, y, [255, 70, 255]); // pale pink halo, 70 from magenta
+    for (let y = b.y; y < b.y + b.h; y++) for (let x = b.x; x < b.x + b.w; x++) put(x, y, [40, 50, 70]);
+  }
+  return { width, height, data };
+}
+
+test('sheet: a glow around items does not join items that stand apart', () => {
+  // Two items 14 px apart whose 10 px glows overlap, like Gemini's glowing pieces.
+  const img = glowSheet([
+    { x: 100, y: 100, w: 80, h: 80, glow: 10 },
+    { x: 194, y: 100, w: 80, h: 80, glow: 10 },
+    { x: 500, y: 100, w: 80, h: 80, glow: 10 },
+  ]);
+  const r = sliceSheet(img, { hasCharacter: false });
+  assert.equal(r.pieces.length, 3);
+});
+
+test('sheet: Split more separates items that are close but not touching', () => {
+  const img = glowSheet([
+    { x: 100, y: 100, w: 80, h: 80 },
+    { x: 186, y: 100, w: 80, h: 80 }, // 6 px gap
+    { x: 500, y: 100, w: 80, h: 80 },
+  ]);
+  assert.equal(sliceSheet(img, { hasCharacter: false }).pieces.length, 2); // the normal setting joins the close pair
+  assert.equal(sliceSheet(img, { hasCharacter: false, mergeGap: 0 }).pieces.length, 3);
+});
