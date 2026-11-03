@@ -38,6 +38,8 @@ HARD RULES:
 - Each piece is one connected object. A pair (gloves, boots) is drawn as a single pair object, not scattered.
 - No text, no numbers, no labels, no captions, no frames, no borders, no grid lines, no watermark anywhere in the image.
 - Do not use magenta in any piece.
+- No glow, aura, halo, outline glow or soft shadow around any piece, including magic or electronic items.
+- Draw only the pieces asked for. No extra figures, faces, ghost images or decorations anywhere on the sheet, and keep every item well clear of the character band.
 - Items in the same row are about the same size. Long items such as weapons may be larger.
 - Mix of items: roughly 60% plain everyday items, 25% nicer ones, 10% elaborate ones, 5% very ornate "legendary" ones. Include items from the character's own world, new items that fit their style, and a few casual or sporty items (sweatband, gym bag, water bottle, trainers) since the sheet is for a fitness game.
 - Item categories to cover across the sheet: head, face, body, hands, feet, back, weapon, accessory.
@@ -59,6 +61,10 @@ Item names are short (two to four words).
 - Background not flat or a different colour: "Regenerate with the background as one flat solid magenta (#FF00FF), no gradient and no shadow." Buffnik detects whatever flat colour is on the border, so a different solid colour also works as long as no piece uses it.
 - Wrong item count or list out of order: the importer warns when the list length differs from the number of pieces it found. You can delete bad pieces in the preview, and names stay tied to the number each piece had in the list, so fix the list order by editing the text before importing.
 - Text or numbers drawn on the sheet: ask for a regeneration with "no text of any kind in the image".
+
+## Cutting settings in the app
+
+"Joining nearby parts" defaults to Auto: it cuts the sheet three ways and keeps the cut whose piece count matches the pasted list. Generated sheets usually leave less space between items than the prompt asks for, so a finer cut is often the right one. If it is still wrong, pick "Split more" (items stuck together) or "Merge more" (one item cut into two) and cut again.
 
 ## What the importer does
 

@@ -2,7 +2,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, Text, TextInput, View } from 'react-native';
 
-import { listWarnings, parseSheetList, planSheetPack } from '@/data/sheet/plan';
+import { listWarnings, parseSheetList, planSheetPack, sliceAuto } from '@/data/sheet/plan';
 import { DEFAULT_SLICE, sliceSheet, type Piece, type SliceResult } from '@/data/sheet/slicer';
 import { loadSheetImage, pieceKey, writePreviews } from '@/data/sheetImport';
 import { useGame } from '@/state/GameProvider';
@@ -14,6 +14,7 @@ const SENSITIVITY = [
   { label: 'Loose', tolerance: 60 },
 ];
 const MERGE = [
+  { label: 'Auto', gap: -1 },
   { label: 'Split more', gap: 0 },
   { label: 'Normal', gap: DEFAULT_SLICE.mergeGap },
   { label: 'Merge more', gap: 0.02 },
@@ -35,7 +36,8 @@ export default function ImportSheet() {
   const [addTo, setAddTo] = useState<string | null>(null); // existing pack id
   const [hasCharacter, setHasCharacter] = useState(true);
   const [sens, setSens] = useState(1);
-  const [merge, setMerge] = useState(1);
+  const [merge, setMerge] = useState(0);
+  const [autoGap, setAutoGap] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<SliceResult | null>(null);
   const [previews, setPreviews] = useState<Record<string, string>>({});
@@ -75,7 +77,16 @@ export default function ImportSheet() {
       await new Promise((r) => setTimeout(r, 50)); // let the spinner draw before the heavy work
       const img = await loadSheetImage(imageUri);
       await new Promise((r) => setTimeout(r, 20));
-      const r = sliceSheet(img, { tolerance: SENSITIVITY[sens].tolerance, mergeGap: MERGE[merge].gap, hasCharacter });
+      const base = { tolerance: SENSITIVITY[sens].tolerance, hasCharacter };
+      let r: SliceResult;
+      if (MERGE[merge].gap < 0) {
+        const auto = sliceAuto(img, list, base);
+        r = auto.result;
+        setAutoGap(auto.gap);
+      } else {
+        r = sliceSheet(img, { ...base, mergeGap: MERGE[merge].gap });
+        setAutoGap(null);
+      }
       run.current += 1;
       setPreviews(writePreviews(r.pieces, run.current));
       setRemoved(new Set());
@@ -204,6 +215,9 @@ export default function ImportSheet() {
         </View>
         <Btn label={busy ? 'Working…' : result ? 'Cut again with these settings' : 'Cut the sheet'} onPress={cut} disabled={!imageUri || busy} />
         {busy ? <ActivityIndicator color={C.accentSoft} /> : null}
+        <Text style={t.small}>
+          Auto tries three settings and keeps the one whose piece count matches your list{autoGap !== null ? ` (it used ${autoGap === 0 ? 'Split more' : autoGap < DEFAULT_SLICE.mergeGap ? 'a finer cut' : 'Normal'})` : ''}.
+        </Text>
         <Text style={t.small}>If items are split in two, use Merge more. If separate items are stuck together, use Split more. If the background leaves specks, use Loose; if parts of items vanish, use Strict.</Text>
       </Card>
 

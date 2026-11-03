@@ -1,5 +1,9 @@
 # Changelog
 
+## Build 13
+- **Sheet import: Auto cutting.** The default "Joining nearby parts" setting now cuts the sheet three ways and keeps the cut whose item and outfit counts match your pasted list. On a real Gemini sheet (4 outfits, 24 items) it finds all 29 pieces. The settings card says which cut it used.
+- The Gemini prompt now also asks for no glow, no stray extra figures and clear space between the character band and the items.
+
 ## Build 12
 - **Sheet import: fewer merged pieces.** A faint glow or halo around an item no longer joins it to its neighbours. "Split more" now cuts at the pixel level and separates items that sit close together, instead of still joining anything within about 10 pixels. Pieces inside another piece's outline are only folded into it when they are much smaller.
 

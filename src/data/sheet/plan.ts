@@ -5,7 +5,7 @@
 import { GEAR_SLOTS, type GearSlot } from '../../engine/wardrobe';
 import { RARITIES, validateManifest, type PackFile, type PackLook, type PackManifest, type PackRarity } from '../packs';
 import { encodePng } from './png';
-import type { Piece } from './slicer';
+import { DEFAULT_SLICE, sliceSheet, type Piece, type SliceOptions, type SliceResult } from './slicer';
 
 export interface ListedItem {
   number: number;
@@ -174,4 +174,27 @@ export function listWarnings(list: SheetList, pieces: Piece[]): string[] {
   else if (list.items.length !== items) out.push(`The list has ${list.items.length} items but ${items} pieces were found. Names follow the list numbers in reading order, so check the preview.`);
   if (list.outfits.length > 0 && list.outfits.length !== outfits) out.push(`The list has ${list.outfits.length} outfits but ${outfits} were found.`);
   return out;
+}
+
+/** Merge distances tried by auto mode, from the most joined to none. */
+export const AUTO_GAPS = [DEFAULT_SLICE.mergeGap, 0.003, 0];
+
+/**
+ * Cut the sheet at each merge distance and keep the cut whose piece counts best match the pasted list
+ * (items, and outfits when listed). On a tie the more joined cut wins, so parts of one item stay together.
+ * With no list there is nothing to compare against, so the finest cut is used: generated sheets usually
+ * leave less space between items than asked for. Returns the merge distance used.
+ */
+export function sliceAuto(img: Parameters<typeof sliceSheet>[0], list: SheetList, opt: Partial<SliceOptions> = {}): { result: SliceResult; gap: number } {
+  if (list.items.length === 0) return { result: sliceSheet(img, { ...opt, mergeGap: 0 }), gap: 0 };
+  let best: { result: SliceResult; gap: number; miss: number } | null = null;
+  for (const gap of AUTO_GAPS) {
+    const result = sliceSheet(img, { ...opt, mergeGap: gap });
+    const items = result.pieces.filter((p) => p.kind === 'item').length;
+    const outfits = result.pieces.filter((p) => p.kind === 'outfit').length;
+    const miss = Math.abs(items - list.items.length) + (list.outfits.length > 0 ? Math.abs(outfits - list.outfits.length) : 0);
+    if (!best || miss < best.miss) best = { result, gap, miss };
+    if (miss === 0) break;
+  }
+  return { result: best!.result, gap: best!.gap };
 }

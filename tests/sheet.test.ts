@@ -214,3 +214,23 @@ test('sheet: Split more separates items that are close but not touching', () => 
   assert.equal(sliceSheet(img, { hasCharacter: false }).pieces.length, 2); // the normal setting joins the close pair
   assert.equal(sliceSheet(img, { hasCharacter: false, mergeGap: 0 }).pieces.length, 3);
 });
+
+test('sheet: auto mode keeps the cut whose piece count matches the list', async () => {
+  const { sliceAuto, parseSheetList } = await import('../src/data/sheet/plan');
+  const img = glowSheet([
+    { x: 100, y: 100, w: 80, h: 80 },
+    { x: 186, y: 100, w: 80, h: 80 }, // 6 px from the first: the normal setting joins them
+    { x: 500, y: 100, w: 80, h: 80 },
+  ]);
+  const three = parseSheetList('1 | A | head | common\n2 | B | body | common\n3 | C | feet | common');
+  const a = sliceAuto(img, three, { hasCharacter: false });
+  assert.equal(a.result.pieces.length, 3);
+  assert.ok(a.gap < 0.008, 'a finer cut than the normal one');
+  // A list of two items means the close pair really is one item.
+  const two = parseSheetList('1 | A | head | common\n2 | B | body | common');
+  const b = sliceAuto(img, two, { hasCharacter: false });
+  assert.equal(b.result.pieces.length, 2);
+  assert.ok(b.gap > 0);
+  // With no list the finest cut is used.
+  assert.equal(sliceAuto(img, parseSheetList(''), { hasCharacter: false }).gap, 0);
+});
