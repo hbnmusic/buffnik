@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { CONFIG } from '@/engine';
 import { activeCharacter } from '@/state/characters';
 import { CharacterView } from '@/ui/CharacterView';
+import { wornGear } from '@/ui/gearPlacement';
 import { useGame } from '@/state/GameProvider';
 import { describeDrop, shortDate, STAT_NAMES } from '@/ui/format';
 import { Bar, Btn, C, Card, Row, Screen, t } from '@/ui/theme';
@@ -37,7 +38,7 @@ export default function Home() {
       <Card>
         <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
           <Pressable onPress={() => router.push('/character')}>
-            <CharacterView character={hero} look={heroLook} tier={state.buildTier} width={92} />
+            <CharacterView character={hero} look={heroLook} tier={state.buildTier} width={92} gear={wornGear(hero.gear, hero.fit, loaded.lookCatalog)} />
           </Pressable>
           <View style={{ flex: 1, gap: 6 }}>
             <Text style={t.h1}>Level {level.level}</Text>

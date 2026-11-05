@@ -1,5 +1,9 @@
 # Changelog
 
+## Build 14
+- **Worn gear is drawn on the character.** Equipped items now appear on the figure on the Hero tab and the Home tab, placed by slot: head items above the head, face items over the eyes, body items on the torso, gloves and watches at the hands, boots at the feet, bags behind and to the side, weapons at the side and other accessories floating beside the figure. [inference: items are flat front-view pictures, so they sit on the character like stickers and do not bend around the body or replace the outfit.]
+- **Fit each item.** On the Hero tab, tap a worn item to move it (arrows) or resize it (Smaller, Bigger), or Reset. The fit is saved per character, so each base character can have its own.
+
 ## Build 13
 - **Sheet import: Auto cutting.** The default "Joining nearby parts" setting now cuts the sheet three ways and keeps the cut whose item and outfit counts match your pasted list. On a real Gemini sheet (4 outfits, 24 items) it finds all 29 pieces. The settings card says which cut it used.
 - The Gemini prompt now also asks for no glow, no stray extra figures and clear space between the character band and the items.

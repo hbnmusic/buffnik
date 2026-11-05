@@ -1,5 +1,5 @@
 import * as DocumentPicker from 'expo-document-picker';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, Text, TextInput, View } from 'react-native';
 
 import { router } from 'expo-router';
@@ -7,6 +7,7 @@ import { router } from 'expo-router';
 import { addCharacter, activeCharacter, equipGear, MAX_CHARACTERS, removeCharacter, setActive, updateCharacter, type Character } from '@/state/characters';
 import { useGame } from '@/state/GameProvider';
 import { CharacterView, ItemIcon } from '@/ui/CharacterView';
+import { adjustFit, wornGear, type GearFit } from '@/ui/gearPlacement';
 import { EYE_COLORS, HAIR_COLORS, HAIR_STYLES, SKIN_TONES } from '@/ui/characterSpec';
 import { Btn, C, Card, Chip, Screen, inputStyle, t } from '@/ui/theme';
 import { GEAR_SLOTS, type Look } from '@/engine';
@@ -31,6 +32,11 @@ function Swatches({ colors, value, onPick }: { colors: string[]; value: string; 
 export default function CharacterTab() {
   const { loaded, saveCharacterBook, importPack, deletePack } = useGame();
   const [busy, setBusy] = useState(false);
+  const [adjusting, setAdjusting] = useState<string | null>(null);
+  // Fits are edited on screen straight away and saved a moment after the last tap.
+  const [draft, setDraft] = useState<Record<string, GearFit> | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
   if (!loaded) return <Screen><Text style={t.muted}>Loading…</Text></Screen>;
 
   const { characters: book, lookCatalog, ownedLookIds, state, packs } = loaded;
@@ -39,10 +45,20 @@ export default function CharacterTab() {
   const ownedAll = lookCatalog.filter((l) => ownedLookIds.includes(l.id));
   const owned = ownedAll.filter((l) => !l.slot);
   const ownedGear = ownedAll.filter((l) => l.slot);
-  const worn = GEAR_SLOTS.flatMap((slot) => {
-    const item = lookCatalog.find((l) => l.id === hero.gear?.[slot]);
-    return item ? [item] : [];
-  });
+  const fits = draft ?? hero.fit ?? {};
+  const wornItems = wornGear(hero.gear, fits, lookCatalog);
+  const worn = wornItems.map((w) => w.look);
+  const changeFit = (itemId: string, step: Parameters<typeof adjustFit>[1] | 'reset') => {
+    const next = { ...fits };
+    if (step === 'reset') delete next[itemId];
+    else next[itemId] = adjustFit(next[itemId], step);
+    setDraft(next);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      await saveCharacterBook(updateCharacter(book, hero.id, { fit: next }));
+      setDraft(null);
+    }, 600);
+  };
   const patch = (p: Partial<Omit<Character, 'id'>>) => saveCharacterBook(updateCharacter(book, hero.id, p));
   const fail = (e: unknown) => Alert.alert('Could not do that', e instanceof Error ? e.message : String(e));
 
@@ -72,18 +88,38 @@ export default function CharacterTab() {
   return (
     <Screen>
       <View style={{ alignItems: 'center', gap: 8 }}>
-        <CharacterView character={hero} look={look} tier={state.buildTier} width={220} />
+        <CharacterView character={hero} look={look} tier={state.buildTier} width={220} gear={wornItems} />
         <Text style={t.h2}>{hero.name}</Text>
         <Text style={t.small}>{look.name} · build tier {state.buildTier} (changes as your strength and body composition do)</Text>
         {worn.length > 0 && (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-            {worn.map((g) => (
-              <View key={g.id} style={{ alignItems: 'center', gap: 2 }}>
-                <ItemIcon look={g} size={52} />
-                <Text style={{ color: C.faint, fontSize: 10 }}>{g.slot}</Text>
+          <>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+              {worn.map((g) => (
+                <Pressable key={g.id} onPress={() => setAdjusting(adjusting === g.id ? null : g.id)} style={{ alignItems: 'center', gap: 2 }}>
+                  <View style={{ borderWidth: 2, borderRadius: 14, borderColor: adjusting === g.id ? '#FFFFFF' : 'transparent' }}>
+                    <ItemIcon look={g} size={52} />
+                  </View>
+                  <Text style={{ color: C.faint, fontSize: 10 }}>{g.slot}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {adjusting && worn.some((g) => g.id === adjusting) ? (
+              <View style={{ gap: 8, alignItems: 'center' }}>
+                <Text style={t.small}>Move and resize the selected item on {hero.name}.</Text>
+                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <Chip label="◀" selected={false} onPress={() => changeFit(adjusting, { dx: -0.03 })} />
+                  <Chip label="▲" selected={false} onPress={() => changeFit(adjusting, { dy: -0.02 })} />
+                  <Chip label="▼" selected={false} onPress={() => changeFit(adjusting, { dy: 0.02 })} />
+                  <Chip label="▶" selected={false} onPress={() => changeFit(adjusting, { dx: 0.03 })} />
+                  <Chip label="Smaller" selected={false} onPress={() => changeFit(adjusting, { scaleBy: 1 / 1.1 })} />
+                  <Chip label="Bigger" selected={false} onPress={() => changeFit(adjusting, { scaleBy: 1.1 })} />
+                  <Chip label="Reset" selected={false} onPress={() => changeFit(adjusting, 'reset')} />
+                </View>
               </View>
-            ))}
-          </View>
+            ) : (
+              <Text style={t.small}>Tap a worn item to move or resize it on the character.</Text>
+            )}
+          </>
         )}
       </View>
 

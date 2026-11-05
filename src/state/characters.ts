@@ -1,5 +1,6 @@
 /** Character slots: each has its own look and appearance. Stored as one JSON document. */
 import type { GearSlot } from '../engine/wardrobe';
+import type { GearFit } from '../ui/gearPlacement';
 import type { Store } from './store';
 
 export const MAX_CHARACTERS = 5;
@@ -15,6 +16,8 @@ export interface Character {
   lookId: string;
   /** Gear item worn in each slot (catalog ids). */
   gear?: Partial<Record<GearSlot, string>>;
+  /** How each worn item is placed on this character, by item id. */
+  fit?: Record<string, GearFit>;
 }
 
 export interface CharacterBook {
@@ -36,7 +39,7 @@ export const activeCharacter = (book: CharacterBook): Character => book.slots.fi
 export function addCharacter(book: CharacterBook, name: string, id: string): CharacterBook {
   if (book.slots.length >= MAX_CHARACTERS) throw new Error(`You can have up to ${MAX_CHARACTERS} characters.`);
   const base = activeCharacter(book);
-  const c: Character = { ...base, id, name: name.trim() || `Hero ${book.slots.length + 1}`, gear: {} };
+  const c: Character = { ...base, id, name: name.trim() || `Hero ${book.slots.length + 1}`, gear: {}, fit: {} };
   return { slots: [...book.slots, c], activeId: c.id };
 }
 
