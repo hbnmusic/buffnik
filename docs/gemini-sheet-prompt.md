@@ -6,7 +6,7 @@ Buffnik can import one image that holds a character, optional alternate outfits 
 
 1. In Gemini, choose image creation, attach 4 to 8 reference images of the character (varied angles, full body, official art if you have it), and paste the prompt below with the fields in `[brackets]` filled in.
 2. Use a landscape (16:9) image. Download the full-size version, as a PNG if offered.
-3. Copy Gemini's text reply (the numbered list) as well. Buffnik uses it to name the items.
+3. Do not use the list Gemini writes with the image. It is written separately from the picture and often does not match it (items in a different order, or items that are not on the sheet). Instead, in the same chat, send the naming prompt under "Step 2" below and copy that reply. Buffnik uses it to name the items.
 4. In Buffnik: Hero, Import character sheet (or share the image from Gemini or your gallery to Buffnik). Pick the image, paste the list, press Cut the sheet, check the preview (tap any stray piece to leave it out), import.
 5. For more than about 24 items, generate several sheets and import each one into the same pack ("Add to this pack"). Smaller sheets give larger, more consistent items. [inference: image generators tend to blur and repeat items when asked for 50 or more in one image.] Three sheets of 24 give 72 items.
 
@@ -44,21 +44,30 @@ HARD RULES:
 - Mix of items: roughly 60% plain everyday items, 25% nicer ones, 10% elaborate ones, 5% very ornate "legendary" ones. Include items from the character's own world, new items that fit their style, and a few casual or sporty items (sweatband, gym bag, water bottle, trainers) since the sheet is for a fitness game.
 - Item categories to cover across the sheet: head, face, body, hands, feet, back, weapon, accessory.
 
-AFTER THE IMAGE, reply with a plain text list and nothing else, in exactly this format, one entry per line:
+Reply with the image only. Do not write a list.
+```
 
-CHARACTER | [character name]             (omit if there is no top band)
-OUTFIT | [outfit name] | [rarity]        (four lines, left to right; omit if there is no top band)
-1 | [item name] | [slot] | [rarity]      (one line per item, numbered in the order the items appear: left to right, top to bottom)
+## Step 2: name what was drawn
+
+Send this in the same Gemini chat right after the image, and copy the reply into Buffnik:
+
+```
+Look at the sheet image you just made. Ignore any list you wrote earlier. Name each item you can actually see in the item grid, in reading order: left to right, then top to bottom. Reply with a plain text list and nothing else, in exactly this format, one entry per line:
+
+CHARACTER | [character name]             (omit if the sheet has no top band)
+OUTFIT | [outfit name] | [rarity]        (the alternate full-body outfits, left to right, not counting the first, base character; omit if none)
+1 | [item name] | [slot] | [rarity]      (one line per item)
 
 slot is one of: head, face, body, hands, feet, back, weapon, accessory
 rarity is one of: common, rare, epic, legendary
-Item names are short (two to four words).
+Item names are two to four words and describe what is drawn. The number of lines must equal the number of items in the image.
 ```
 
 ## If the result is off
 
 - Items touching or overlapping: "Regenerate. Keep the character and the item designs, but put at least 3% of the image width of empty magenta between every piece."
 - Background not flat or a different colour: "Regenerate with the background as one flat solid magenta (#FF00FF), no gradient and no shadow." Buffnik detects whatever flat colour is on the border, so a different solid colour also works as long as no piece uses it.
+- Names do not match the pictures: use the Step 2 prompt above, or edit the list text yourself. The names follow the item numbers in reading order (left to right, top to bottom).
 - Wrong item count or list out of order: the importer warns when the list length differs from the number of pieces it found. You can delete bad pieces in the preview, and names stay tied to the number each piece had in the list, so fix the list order by editing the text before importing.
 - Text or numbers drawn on the sheet: ask for a regeneration with "no text of any kind in the image".
 
