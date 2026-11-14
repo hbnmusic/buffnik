@@ -15,6 +15,8 @@ export default function ImportStrong() {
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<{ result: StrongImportSummary; unit: WeightUnit } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The start of what was shared, shown when it could not be read, so it can be checked or sent for a fix. */
+  const [received, setReceived] = useState<string | null>(null);
   const lastText = useRef<string | null>(null);
 
   useEffect(() => {
@@ -23,6 +25,7 @@ export default function ImportStrong() {
 
   const run = async (text: string, u: WeightUnit) => {
     setError(null);
+    setReceived(null);
     setSummary(null);
     setBusy(true);
     try {
@@ -31,17 +34,18 @@ export default function ImportStrong() {
       setSummary({ result: await importStrongCsv(text, u), unit: u });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      setReceived(text.slice(0, 600));
     } finally {
       setBusy(false);
     }
   };
 
-  // A file shared from Strong imports straight away, using the unit from the last import.
+  // Whatever Strong shares imports straight away, using the unit from the last import when the data has none.
   useEffect(() => {
     if (pendingShare === null || !loaded) return;
     const text = pendingShare;
     setPendingShare(null);
-    if (text === '') setError('That did not look like a Strong export. In Strong, use Export and send the CSV file.');
+    if (text === '') setError('Nothing readable was shared. In Strong, open a workout and tap Share, or use Export Strong Data, and pick Buffnik.');
     else run(text, loaded.strongUnit);
   }, [pendingShare, loaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -60,7 +64,7 @@ export default function ImportStrong() {
   return (
     <Screen>
       <Card title="Fastest way">
-        <Text style={t.body}>In Strong, tap Export and choose Buffnik in the share list. It imports straight away.</Text>
+        <Text style={t.body}>In Strong, open a workout and tap Share, then choose Buffnik. It imports straight away. Export Strong Data (CSV) also works, for your whole history.</Text>
         <Text style={t.small}>
           Importing the same file again is harmless. A workout that Health Connect also recorded counts once and keeps your sets. Workouts from before the game started only set your lifting records.
         </Text>
@@ -68,10 +72,16 @@ export default function ImportStrong() {
 
       {busy && <Text style={t.muted}>Importing…</Text>}
       {error && <Text style={t.error}>{error}</Text>}
+      {received && (
+        <Card title="What Buffnik received">
+          <Text style={[t.small, { fontFamily: 'monospace' }]} selectable>{received}</Text>
+          <Text style={t.small}>Long-press to copy it, and send it to me if it came from Strong so the reader can be fixed.</Text>
+        </Card>
+      )}
 
       {summary && (
         <Card title="Imported">
-          <Row left="Workouts in the file" right={String(summary.result.inFile)} />
+          <Row left="Workouts received" right={String(summary.result.inFile)} />
           <Row left="New" right={String(summary.result.added)} />
           <Row left="Already imported before" right={String(summary.result.alreadyImported)} />
           <Row left="Also recorded by Health Connect (counted once)" right={String(summary.result.matchedHealthConnect)} />
@@ -81,12 +91,12 @@ export default function ImportStrong() {
           {summary.result.tooShort > 0 && <Row left="Too short to count" right={String(summary.result.tooShort)} rightColor={C.gold} />}
           {summary.result.tooShort > 0 && (
             <Text style={t.small}>
-              {summary.result.withoutDuration > 0 ? 'The file has no readable duration for some of these. ' : ''}
+              {summary.result.withoutDuration > 0 ? 'Strong did not include how long some of these took. ' : ''}
               A workout counts when it lasts 20 minutes or more, or has at least {CONFIG.ingest.strongMinWorkingSets} working sets. Open the Workouts tab, tap one, and enter how long it really took.
             </Text>
           )}
           <Text style={t.small}>
-            Weights were read as {summary.result.weightUnit === 'lb' ? 'pounds' : 'kilograms'}{summary.result.unitFromFile ? ', as the file says' : ''}.
+            Weights were read as {summary.result.weightUnit === 'lb' ? 'pounds' : 'kilograms'}{summary.result.unitFromFile ? ', as Strong stated' : ''}.
           </Text>
           {!summary.result.unitFromFile && (
             <Btn label={`Weights were in ${other === 'lb' ? 'pounds' : 'kilograms'}? Re-import`} onPress={() => lastText.current && run(lastText.current, other)} secondary disabled={busy} />

@@ -1,5 +1,12 @@
 # Changelog
 
+## Build 15
+- **Share one workout from Strong.** Open a workout in Strong, tap Share and choose Buffnik. The text Strong sends ("Set 1: 55 lb × 12 reps" lines) now imports straight away. Before, only the CSV from Export Strong Data worked, and a shared workout showed "That did not look like a Strong export".
+  - Assisted sets ("-70 lb") count as bodyweight. Timed sets such as Stairmaster or Walking add their minutes to the workout's length. Warm-up sets marked W are recognised.
+  - Strong's shared text has no duration, so the 6-working-set rule applies: 6 or more working sets count, with the length estimated at 3 minutes a set. Tap the workout on the Workouts tab to set its real length.
+  - Sharing the same workout twice, or importing it again later from the CSV export, counts it once.
+- If Buffnik cannot read what was shared, the import screen shows what it received, so it can be copied and sent for a fix.
+
 ## Build 14
 - **Worn gear is drawn on the character.** Equipped items now appear on the figure on the Hero tab and the Home tab, placed by slot: head items above the head, face items over the eyes, body items on the torso, gloves and watches at the hands, boots at the feet, bags behind and to the side, weapons at the side and other accessories floating beside the figure. [inference: items are flat front-view pictures, so they sit on the character like stickers and do not bend around the body or replace the outfit.]
 - **Fit each item.** On the Hero tab, tap a worn item to move it (arrows) or resize it (Smaller, Bigger), or Reset. The fit is saved per character, so each base character can have its own.

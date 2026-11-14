@@ -187,3 +187,38 @@ test('service: a short workout with few sets is reported, and counts once its le
   assert.equal(g.state.thisWeek.credited, 0);
   await assert.rejects(() => setWorkoutDuration(store, g.workouts[0].id, 0), /how long/);
 });
+
+test('service: a workout shared from Strong as text imports, counts, and sharing it again adds nothing', async () => {
+  const { readFileSync } = await import('node:fs');
+  const share = readFileSync(new URL('./fixtures/strong-share.txt', import.meta.url), 'utf8');
+  const store = createMemoryStore();
+  await loadGame(store, '2026-11-09');
+  const first = await importStrong(store, share, 'kg', '2026-11-14');
+  assert.equal(first.inFile, 1);
+  assert.equal(first.added, 1);
+  assert.equal(first.countedBySets, 1);
+  assert.equal(first.weightUnit, 'lb');
+  const again = await importStrong(store, share, 'kg', '2026-11-14');
+  assert.equal(again.added, 0);
+  const g = await loadGame(store, '2026-11-14');
+  assert.equal(g.workouts.length, 1);
+  assert.equal(g.state.thisWeek.credited, 1);
+  // A shared workout does not change the unit remembered for CSV files without units.
+  assert.equal(g.strongUnit, 'lb');
+  await assert.rejects(() => importStrong(store, 'just some text', 'lb', '2026-11-14'), /not a Strong export or a shared Strong workout/);
+});
+
+test('service: the same workout from a share and from the CSV export counts once', async () => {
+  const { readFileSync } = await import('node:fs');
+  const share = readFileSync(new URL('./fixtures/strong-share.txt', import.meta.url), 'utf8');
+  const csv = `Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,Notes,Workout Notes,RPE
+${Array.from({ length: 15 }, (_, i) => `2026-11-13 17:50:27,Afternoon Workout,6m,Leg Curl,${i + 1},55,12,0,0,,,`).join('\n')}
+`;
+  const store = createMemoryStore();
+  await loadGame(store, '2026-11-09');
+  await importStrong(store, share, 'lb', '2026-11-14');
+  await importStrong(store, csv, 'lb', '2026-11-14');
+  const g = await loadGame(store, '2026-11-14');
+  assert.equal(g.workouts.length, 1);
+  assert.equal(g.state.thisWeek.credited, 1);
+});

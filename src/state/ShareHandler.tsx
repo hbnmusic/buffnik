@@ -3,12 +3,12 @@ import { router } from 'expo-router';
 import { useShareIntentContext } from 'expo-share-intent';
 import { useEffect } from 'react';
 
-import { looksLikeStrongCsv } from '@/data/strongCsv';
 import { useGame } from './GameProvider';
 
 /**
- * Receives a file shared from Strong ("Export" then "Buffnik"), checks it, and opens the import screen,
- * which imports it straight away. Renders nothing.
+ * Receives what Strong shares (the CSV from Export Strong Data, or the text from Share on one workout) and opens
+ * the import screen, which imports it straight away or explains what it received. Images go to the sheet import.
+ * Renders nothing.
  */
 export function ShareHandler() {
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
@@ -36,8 +36,8 @@ export function ShareHandler() {
       if (!text && shareIntent.text) text = shareIntent.text;
       resetShareIntent();
 
-      // Even a wrong file opens the import screen, so the user sees a clear message.
-      setPendingShare(text && looksLikeStrongCsv(text) ? text : '');
+      // Even something that is not from Strong opens the import screen, so the user sees what was received.
+      setPendingShare(text ?? '');
       setTimeout(() => router.push('/import-strong'), 0);
     })();
   }, [hasShareIntent, shareIntent, resetShareIntent, setPendingShare, setPendingImage]);

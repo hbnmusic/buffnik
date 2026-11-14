@@ -19,7 +19,8 @@ import {
   type ShopItem,
 } from '../engine';
 import { applyDurationOverrides, buildActivityEvents, deviceLocalDate, strongToRaw, type DurationOverrides, type RawSession } from '../data/ingest';
-import { parseStrongCsv, type WeightUnit } from '../data/strongCsv';
+import { looksLikeStrongCsv, parseStrongCsv, type WeightUnit } from '../data/strongCsv';
+import { looksLikeStrongShare, parseStrongShare } from '../data/strongShare';
 import type { PackManifest } from '../data/packs';
 import { addCharacter, loadBook, MAX_CHARACTERS, repairLooks, saveBook, updateCharacter, type CharacterBook } from './characters';
 import { fetchWishlist, type FetchLike } from '../data/steam';
@@ -196,9 +197,13 @@ export interface StrongImportSummary {
   withoutDuration: number;
 }
 
-export async function importStrong(store: Store, csvText: string, unit: WeightUnit, today = todayLocal()): Promise<StrongImportSummary> {
-  const parsed = parseStrongCsv(csvText, unit);
-  await store.setMeta('strongUnit', parsed.unit);
+/** Import Strong data: the CSV from Export Strong Data, or the text from Share on one workout. */
+export async function importStrong(store: Store, text: string, unit: WeightUnit, today = todayLocal()): Promise<StrongImportSummary> {
+  let parsed;
+  if (looksLikeStrongCsv(text)) parsed = parseStrongCsv(text, unit);
+  else if (looksLikeStrongShare(text)) parsed = parseStrongShare(text, unit);
+  else throw new Error('This is not a Strong export or a shared Strong workout.');
+  if (parsed.unitFromFile || looksLikeStrongCsv(text)) await store.setMeta('strongUnit', parsed.unit);
   const raws = parsed.sessions.flatMap((s) => {
     const r = strongToRaw(s);
     return r ? [r] : [];
